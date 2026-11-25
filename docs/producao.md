@@ -14,3 +14,7 @@ O editor estático em `dist/` veio da versão publicada do artefato, commit de o
 ## Primeira entrega 2D
 
 Implementar uma cena local com foto autorizada, máscara de tecido, área estampável e exportação Full HD. Validar primeiro a troca de cor do tecido preto para off-white com a textura visível. O módulo 2D terá estado próprio para cenas e camadas. Definir um contrato versionado para receber a arte do editor 3D, com arquivo ou bytes da arte, nome, dimensões e lado sugerido. Validar se a transferência leva a arte original ou a versão editada antes de ligar o atalho.
+
+## Empacotamento no Site existente
+
+O checkout do GitHub continua sendo a fonte do editor. Para o Site existente, gere o módulo Worker com `node scripts/build-site-worker.mjs /tmp/doutelab-worker`. O módulo incorpora os arquivos do editor e acrescenta os cabeçalhos HTTP. O manifesto de hospedagem usa o modo Worker, com esse módulo em `dist/server/index.js`. Para rollback, promova a versão anteriormente publicada no mesmo projeto Sites.
