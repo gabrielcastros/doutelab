@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#18191c">
   <title>doutelab · Mockups</title>
+  <link rel="stylesheet" href="./studio.css">
   <link rel="stylesheet" href="./mockups/style.css">
   <script type="module" src="./mockups/app.js"></script>
 </head>
@@ -13,28 +14,36 @@
     <a class="brand" href="./">doutelab<span></span></a>
     <nav aria-label="Editores">
       <a href="./">Estúdio 3D</a>
-      <a href="./mockups.html" aria-current="page">Mockups</a>
+      <a id="mockups-nav" href="./mockups.html" aria-current="page">Mockups</a>
     </nav>
     <div class="project-actions">
       <button id="open-project" type="button">Abrir projeto</button>
-      <button id="save-project" type="button">Salvar projeto</button>
+      <button id="save-project" type="button" hidden>Salvar projeto</button>
       <input id="project-file" type="file" accept=".json,application/json" hidden>
     </div>
   </header>
-  <main>
-    <aside class="library" aria-labelledby="library-title">
-      <div class="panel-heading"><h1 id="library-title">Biblioteca</h1></div>
+  <main id="library-home" class="library" aria-labelledby="library-title">
+    <div class="library-heading">
+      <div><h1 id="library-title">Mockups</h1><p>Escolha uma foto para aplicar sua estampa.</p></div>
       <button class="photo-button" id="add-photo" type="button">+ Adicionar foto</button>
+    </div>
+    <div class="library-tools">
       <div class="filters">
         <select id="filter-category" aria-label="Filtrar tipo de peça"></select>
         <select id="filter-view" aria-label="Filtrar vista"></select>
         <select id="filter-style" aria-label="Filtrar apresentação"></select>
       </div>
-      <div id="catalog" class="catalog"></div>
-    </aside>
+      <p id="library-status" role="status"></p>
+    </div>
+    <div id="catalog" class="catalog"></div>
+  </main>
+  <main id="mockup-editor" class="mockup-workspace" hidden>
     <section class="workbench" aria-labelledby="scene-name">
       <div class="workbench-bar">
-        <div class="workbench-title"><h2 id="scene-name">Mockups</h2><p id="scene-description"></p></div>
+        <div class="workbench-title">
+          <button id="back-library" type="button">Biblioteca</button>
+          <div><h2 id="scene-name">Mockups</h2><p id="scene-description"></p></div>
+        </div>
         <div class="history">
           <button id="undo" type="button" disabled>Desfazer</button>
           <button id="redo" type="button" disabled>Refazer</button>
@@ -43,7 +52,23 @@
       <div class="stage" id="drop-stage">
         <div class="canvas-stack" id="canvas-stack">
           <canvas id="scene-canvas" aria-label="Composição fotográfica"></canvas>
-          <canvas id="selection-canvas" aria-label="Arraste para mover a estampa selecionada"></canvas>
+          <canvas id="selection-canvas" aria-label="Clique em uma estampa para selecionar e arraste para mover"></canvas>
+          <div id="photo-handles" class="photo-handles" hidden>
+            <button type="button" class="handle corner" data-gesture="scale" data-x="-1" data-y="-1" aria-label="Redimensionar pelo canto superior esquerdo"></button>
+            <button type="button" class="handle corner" data-gesture="scale" data-x="1" data-y="-1" aria-label="Redimensionar pelo canto superior direito"></button>
+            <button type="button" class="handle corner" data-gesture="scale" data-x="1" data-y="1" aria-label="Redimensionar pelo canto inferior direito"></button>
+            <button type="button" class="handle corner" data-gesture="scale" data-x="-1" data-y="1" aria-label="Redimensionar pelo canto inferior esquerdo"></button>
+            <button type="button" class="handle rotate" data-gesture="rotate" aria-label="Girar estampa" title="Arraste para girar"></button>
+            <button type="button" class="handle move" data-gesture="move" aria-label="Mover estampa"></button>
+          </div>
+        </div>
+        <div id="art-tools" class="art-tools" role="group" aria-label="Ações da estampa" hidden>
+          <button class="tool-grip" type="button" aria-label="Mover menu da estampa" title="Arraste para mover o menu">⠿</button>
+          <select id="finish" aria-label="Acabamento da estampa"></select>
+          <button type="button" id="duplicate">Duplicar</button>
+          <button type="button" id="raise" title="Trazer uma camada para frente">Frente</button>
+          <button type="button" id="lower" title="Mandar uma camada para trás">Trás</button>
+          <button type="button" id="delete" class="delete">Excluir</button>
         </div>
       </div>
       <div class="workbench-footer">
@@ -63,15 +88,8 @@
         <ul id="layer-list" aria-label="Camadas da frente para trás"></ul>
         <p id="empty-layers" class="muted">Importe uma estampa PNG ou arraste o arquivo sobre a foto.</p>
         <div id="layer-editor" hidden>
-          <div class="layer-actions">
-            <button type="button" id="duplicate">Duplicar</button>
-            <button type="button" id="raise">Frente</button>
-            <button type="button" id="lower">Trás</button>
-            <button type="button" id="delete" class="delete">Excluir</button>
-          </div>
           <div class="control-group">
-            <label>Acabamento<select id="finish"></select></label>
-            <button id="finish-all" type="button">Aplicar a todas as camadas</button>
+            <button id="finish-all" type="button">Aplicar acabamento a todas</button>
           </div>
           <div class="control-group sliders">
             <label>Tamanho<input id="layer-size" type="range" min="1" max="150" step="1"><output></output></label>

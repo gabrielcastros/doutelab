@@ -121,8 +121,8 @@ function syncStatus() {
   $('transform-status').textContent = art.image ? Math.round(art.scale) + '% · ' + Math.round(art.rotation) + '°' : ''
   $('undo').disabled = !art.history.length
   $('hint').textContent = preview || !art.image
-    ? 'Arraste pra girar a camiseta. Use a roda do mouse pra aproximar.'
-    : 'Arte pra mover · Cantos pra redimensionar · Alça redonda pra girar'
+    ? 'Arraste para girar a camiseta. Clique na estampa para editar.'
+    : 'Arraste a estampa para mover. Use os cantos para redimensionar e a alça redonda para girar.'
 }
 
 function syncInspector() {
@@ -144,6 +144,7 @@ function syncInspector() {
   $('opacity-value').value = art.opacity + '%'
   $('preview').setAttribute('aria-pressed', String(preview))
   $('preview').textContent = preview ? 'Editar' : 'Prévia'
+  $('preview').disabled = !art.image
   syncStatus()
 }
 
@@ -207,6 +208,19 @@ function undo() {
   if (!before) return
   applyArt(activeSide, before)
   syncInspector()
+}
+
+function selectArtwork(side) {
+  const nextPreview = side === null
+  if (preview === nextPreview && (nextPreview || side === activeSide)) return
+  finishAppearance()
+  if (side && side !== activeSide) {
+    activeSide = side
+    showFileError('')
+  }
+  preview = nextPreview
+  syncInspector()
+  stage?.requestRender()
 }
 
 function switchView(view) {
@@ -281,6 +295,7 @@ function initializeStage() {
       return fit === 'premium' ? (side === 'front' ? .454 : .429) : .255
     },
     getSelection: () => ({ side: activeSide, art: sides[activeSide], preview }),
+    getArtwork: side => sides[side], select: selectArtwork,
     apply: applyArt, begin: snapshot, commit: recordChange
   })
 
@@ -510,11 +525,8 @@ $('flip').addEventListener('click', () => discreteEdit({ flip: !sides[activeSide
 $('reset-print').addEventListener('click', () => discreteEdit(transformDefaults))
 $('undo').addEventListener('click', undo)
 $('preview').addEventListener('click', () => {
-  finishAppearance()
   stage?.finishGesture()
-  preview = !preview
-  syncInspector()
-  stage?.requestRender()
+  selectArtwork(preview ? activeSide : null)
 })
 document.addEventListener('keydown', event => {
   if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== 'z' ||

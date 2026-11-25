@@ -1,6 +1,6 @@
 # Especificação do módulo Mockups
 
-Versão 0.1 · Proposta para desenvolvimento
+Versão 0.2
 
 ## Objetivo
 
@@ -14,19 +14,19 @@ Escolher peça e vista na biblioteca → importar ou receber a arte do 3D → aj
 
 ### CAT-01 · Biblioteca de cenas
 
-- A biblioteca filtra por tipo de peça, vista e apresentação, como cabide, superfície plana ou corpo.
+- A página inicial de Mockups abre uma grade das cenas. A biblioteca filtra por peça, vista e apresentação. Abrir uma cena leva ao editor. Voltar à biblioteca mantém a composição durante a sessão. A navegação entre Estúdio 3D e Mockups usa a mesma barra nos dois editores.
 - Cada cena associada a uma peça tem foto base, miniatura, máscara, zonas estampáveis, deformação por zona, recursos de iluminação e informações de origem e licença.
 - **Aceite.** Selecionar frente e costas abre as fotos e zonas correspondentes. Incluir uma cena válida no catálogo a torna disponível sem alterar o código do editor.
 
 ### ART-01 · Importação e posicionamento
 
-- Cada PNG importado vira uma camada independente e selecionada, com DTG inicial. A arte começa centralizada na zona ativa, ajustada à área e com proporção preservada.
-- A camada aceita posição, escala e rotação. A arte é deformada com o tecido, recortada na zona estampável e recebe o sombreamento da cena.
+- Cada PNG importado vira uma camada independente e selecionada, com PNG direto inicial. A arte começa centralizada na zona ativa, ajustada à área e com proporção preservada.
+- Arrastar a arte move a camada, arrastar os cantos ajusta a escala e arrastar a alça redonda gira a arte. Shift ajusta a rotação em passos de 15°. Os acabamentos simulados deformam a arte com as dobras. A zona estampável e o sombreamento da cena valem para todos os acabamentos.
 - **Aceite.** Um PNG transparente pode ser movido, redimensionado e rotacionado. Transparência, dobras e recorte aparecem tanto na prévia quanto no arquivo exportado. Arquivo corrompido gera mensagem e preserva o projeto.
 
 ### CAM-01 · Edição por camada
 
-- Ao selecionar uma arte no canvas ou na lista de camadas, exibir acabamento, duplicar, trazer para frente, mandar para trás e excluir.
+- Ao selecionar uma arte no canvas ou na lista de camadas, exibir acabamento, duplicar, trazer para frente, mandar para trás e excluir no menu flutuante perto da seleção. A alça desloca esse menu. Clicar fora da estampa limpa a seleção. No Estúdio 3D, clicar fora entra em prévia e clicar nos pixels visíveis da estampa volta à edição.
 - Duplicar copia arte, zona, transformação e acabamento. A cópia recebe identidade própria, entra logo acima da original com pequeno deslocamento e fica selecionada.
 - A ordem é comum à lista e ao canvas. Cada ação de ordenação move uma posição, com o controle desabilitado no limite. Excluir remove a camada selecionada e limpa a seleção. As operações podem ser desfeitas e refeitas.
 - **Aceite.** Com duas artes sobrepostas, a ordem visível muda ao reordenar. Editar a cópia preserva a original. Desfazer uma exclusão restaura a camada na posição, ordem e acabamento anteriores.
@@ -35,6 +35,7 @@ Escolher peça e vista na biblioteca → importar ou receber a arte do 3D → aj
 
 O usuário escolhe um acabamento por camada. Cada modo simula a aparência da impressão na foto.
 
+- **PNG direto** · Usa a cor e transparência do PNG, sem deformação de tecido ou efeito de tinta.
 - **DTG** · Impressão direta, com textura do tecido visível na arte.
 - **Plastisol** · Cobertura mais opaca e brilho discreto.
 - **À base d’água** · Aparência fosca, suave e integrada às fibras.
@@ -70,7 +71,7 @@ Original usa a luz já presente na foto base. Sem sombra adicional remove soment
 ## Decisões provisórias
 
 - Os cinco estados de cada grupo incluem a opção neutra, como na referência. O rótulo truncado da segunda sombra de janela foi interpretado como **Janela difusa**.
-- O acabamento inicial é DTG. Os acabamentos são simulações visuais para apresentação do produto.
+- O acabamento inicial é PNG direto. Os acabamentos são simulações visuais para apresentação do produto.
 - O catálogo inicial prioriza camiseta, moletom sem capuz e hoodie, frente e costas. Outras categorias entram conforme houver cenas preparadas.
 
 ## AST-01 · Preparação de fotos

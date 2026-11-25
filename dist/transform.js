@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { createArtToolbar } from './art-toolbar.js'
 
 const worldX = 1.36
 const worldY = 1.20
@@ -38,9 +39,10 @@ function boundedPosition(center) {
 const wrapAngle = angle => THREE.MathUtils.euclideanModulo(angle + 180, 360) - 180
 const vectorAt = (x, y, layout) => rotate(x * layout.width / 2, y * layout.height / 2, layout.angle)
 
-export function createArtTransform({ container, camera, printCenter, getProjectionDepth, getSelection, apply, begin, commit }) {
+export function createArtTransform({ container, camera, printCenter, getProjectionDepth, getSelection, getArtwork, select, apply, begin, commit }) {
   const overlay = document.getElementById('transform')
   const canvas = document.getElementById('selection')
+  const placeToolbar = createArtToolbar(document.getElementById('art-tools'), container)
   const ctx = canvas.getContext('2d')
   const handles = [...overlay.querySelectorAll('.handle')]
   const corners = handles.filter(handle => handle.dataset.gesture === 'scale')
@@ -83,6 +85,7 @@ export function createArtTransform({ container, camera, printCenter, getProjecti
     const visible = !preview && !!art.image && facing(side)
     overlay.hidden = !visible
     if (!visible) {
+      placeToolbar(null)
       container.classList.remove('on-art')
       return
     }
@@ -99,6 +102,10 @@ export function createArtTransform({ container, camera, printCenter, getProjecti
     const center = projected(form.center, side)
     const outward = top.clone().sub(center).normalize()
     const rotation = top.clone().addScaledVector(outward, 30)
+    placeToolbar({
+      x: Math.max(...points.map(pixel => pixel.x)),
+      y: Math.min(rotation.y, ...points.map(pixel => pixel.y))
+    })
     setHandle(rotateHandle, rotation)
     setHandle(moveHandle, center)
     const diagonal = points[2].clone().sub(points[0])
@@ -117,7 +124,7 @@ export function createArtTransform({ container, camera, printCenter, getProjecti
     ctx.strokeStyle = '#261c23cc'
     ctx.lineWidth = 3.2
     ctx.stroke()
-    ctx.strokeStyle = '#ff796a'
+    ctx.strokeStyle = '#ff8f72'
     ctx.lineWidth = 1.4
     ctx.stroke()
   }
@@ -137,15 +144,32 @@ export function createArtTransform({ container, camera, printCenter, getProjecti
     return Math.abs(local.x) <= form.width / 2 && Math.abs(local.y) <= form.height / 2
   }
 
+  function hitsArtwork(point, form, art) {
+    if (!inside(point, form) || art.opacity === 0) return false
+    const delta = point.clone().sub(form.center)
+    const local = rotate(delta.x, delta.y, -form.angle)
+    const u = .5 + (art.flip ? -local.x : local.x) / form.width
+    const v = .5 - local.y / form.height
+    const x = clamp(Math.floor(u * art.image.width), 0, art.image.width - 1)
+    const y = clamp(Math.floor(v * art.image.height), 0, art.image.height - 1)
+    return art.image.getContext('2d').getImageData(x, y, 1, 1).data[3] > 8
+  }
+
   function down(event) {
-    if (event.button !== 0 || !event.isPrimary || drag || overlay.hidden) return
-    const { art, side } = getSelection()
-    if (!art.image) return
-    const start = toArtPoint(event, side)
-    if (!start) return
-    const form = artworkLayout(art)
+    if (event.button !== 0 || !event.isPrimary || drag || event.target.closest('.art-tools')) return
     const handle = event.target.closest('.handle')
-    if (!handle && !inside(start, form)) return
+    const selected = getSelection().side
+    const side = handle || facing(selected) ? selected : selected === 'front' ? 'back' : 'front'
+    const art = getArtwork(side)
+    camera.updateMatrixWorld()
+    const start = art.image && facing(side) ? toArtPoint(event, side) : null
+    const form = start ? artworkLayout(art) : null
+    if (!start || (!handle && !hitsArtwork(start, form, art))) {
+      select(null)
+      return
+    }
+    select(side)
+    if (handle) handle.focus({ preventScroll: true })
 
     const gesture = handle?.dataset.gesture ?? 'move'
     drag = {
@@ -166,10 +190,12 @@ export function createArtTransform({ container, camera, printCenter, getProjecti
   }
 
   function move(event) {
-    const { art, side } = getSelection()
+    const { side } = getSelection()
     if (!drag) {
-      const point = !overlay.hidden && art.image ? toArtPoint(event, side) : null
-      container.classList.toggle('on-art', Boolean(point && inside(point, artworkLayout(art))))
+      const candidate = facing(side) ? side : side === 'front' ? 'back' : 'front'
+      const artwork = getArtwork(candidate)
+      const point = artwork.image && facing(candidate) ? toArtPoint(event, candidate) : null
+      container.classList.toggle('on-art', Boolean(point && inside(point, artworkLayout(artwork))))
       return
     }
     if (drag.pointer !== event.pointerId || drag.side !== side) return

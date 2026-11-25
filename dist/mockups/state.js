@@ -1,5 +1,5 @@
 export const finishes = {
-  dtg: 'DTG', plastisol: 'Plastisol', water: 'À base d’água', puff: 'Puff', worn: 'Desgastado'
+  direct: 'PNG direto', dtg: 'DTG', plastisol: 'Plastisol', water: 'À base d’água', puff: 'Puff', worn: 'Desgastado'
 }
 
 export const lights = {
@@ -68,7 +68,7 @@ export function addLayer(project, source, name, width, height, sceneAspect) {
   const aspect = width / height
   const w = Math.min(zone.w * .64, zone.h * aspect / sceneAspect * .64)
   const layer = {
-    id: crypto.randomUUID(), name, source, width, height, finish: 'dtg',
+    id: crypto.randomUUID(), name, source, width, height, finish: 'direct',
     x: zone.x, y: zone.y, w, rotation: 0, seed: Math.floor(Math.random() * 65536)
   }
   return { ...project, layers: [...project.layers, layer], selected: layer.id }

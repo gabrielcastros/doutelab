@@ -6,17 +6,20 @@
   <meta name="theme-color" content="#18191c">
   <meta name="description" content="Posicione, dimensione e gire estampas PNG ou SVG em camisetas 3D.">
   <title>doutelab · Estúdio 3D</title>
+  <link rel="stylesheet" href="./studio.css">
   <link rel="stylesheet" href="./style.css">
   <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
   <script type="module" src="./app.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="wordmark"><b>doutelab</b></div>
-    <h1>Estúdio 3D</h1>
-    <a class="studio-link" href="./mockups.html">Mockups</a>
+  <header class="top">
+    <a class="brand" href="./">doutelab<span></span></a>
+    <nav aria-label="Editores">
+      <a href="./" aria-current="page">Estúdio 3D</a>
+      <a href="./mockups.html">Mockups</a>
+    </nav>
   </header>
-  <main class="workspace">
+  <main class="workspace" aria-label="Estúdio 3D">
     <section class="viewer" aria-label="Visualização da camiseta">
       <div class="viewer-bar">
         <div class="segments" role="group" aria-label="Visualização da camiseta">
@@ -39,6 +42,13 @@
             <button type="button" class="handle corner" data-gesture="scale" data-x="-1" data-y="-1" aria-label="Redimensionar pelo canto inferior esquerdo" title="Arraste para redimensionar"></button>
             <button type="button" class="handle rotate" data-gesture="rotate" aria-label="Girar estampa" title="Arraste para girar a estampa"></button>
             <button type="button" class="handle move" data-gesture="move" aria-label="Mover estampa" title="Arraste a estampa para mover"></button>
+          </div>
+          <div id="art-tools" class="art-tools" role="group" aria-label="Ações da estampa" hidden>
+            <button class="tool-grip" type="button" aria-label="Mover menu da estampa" title="Arraste para mover o menu">⠿</button>
+            <button id="flip" type="button" aria-pressed="false">Espelhar</button>
+            <button id="reset-print" type="button">Redefinir</button>
+            <button id="remove-art" class="delete" type="button">Excluir</button>
+            <button id="send-to-mockups" type="button">Criar mockup</button>
           </div>
         </div>
         <p id="graphics-error" class="graphics-error" role="alert" hidden></p>
@@ -78,7 +88,6 @@
         <div id="file-card" class="file-card" hidden>
           <img id="art-thumb" alt="" width="34" height="34">
           <span class="file-info"><span id="file-name" aria-live="polite"></span><small id="file-kind"></small></span>
-          <button class="remove-button" id="remove-art" aria-label="Remover estampa" title="Remover estampa" type="button">×</button>
         </div>
         <div id="art-properties" class="art-properties" hidden>
           <div id="svg-properties" class="property-row" hidden>
@@ -92,11 +101,6 @@
             <label for="opacity">Opacidade</label>
             <input id="opacity" type="range" value="100" min="0" max="100">
             <output id="opacity-value" for="opacity">100%</output>
-          </div>
-          <div class="property-actions">
-            <button id="flip" class="tool-button" type="button" aria-pressed="false">Espelhar</button>
-            <button id="send-to-mockups" class="tool-button" type="button">Criar mockup</button>
-            <button id="reset-print" class="tool-button" type="button">Redefinir</button>
           </div>
         </div>
       </section>

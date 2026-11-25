@@ -122,6 +122,13 @@ function applyInk(data, map, zone, layer, image) {
     for (let x = startX; x < endX; x++) {
       const i = y * width + x
       if (!alpha[i]) continue
+      if (layer.finish === 'direct') {
+        const ink = ((y - top) * stride + x - left) * 4
+        const opacity = pixels[ink + 3] * alpha[i] / 65025
+        const target = i * 4
+        for (let k = 0; k < 3; k++) data[target + k] = data[target + k] * (1 - opacity) + pixels[ink + k] * opacity
+        continue
+      }
       const gradientX = (folds[y * width + Math.min(x + step, width - 1)] - folds[y * width + Math.max(0, x - step)]) / reference
       const gradientY = (folds[Math.min(y + step, height - 1) * width + x] - folds[Math.max(y - step, 0) * width + x]) / reference
       const u = x - left + clamp(gradientX * .22, -.005, .005) * width

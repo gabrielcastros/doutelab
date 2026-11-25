@@ -4,13 +4,22 @@ import {
   selectedLayer, addLayer, editLayer, duplicateLayer, deleteLayer, moveLayer, validateProject, imageData
 } from './state.js'
 import { canvasOf, canvasBlob, asDataURL, localImage, loadImage, download, projectLimit } from './files.js'
-import { paintScene, preparePhoto, layerSize, hitsLayer } from './render.js'
+import { paintScene, preparePhoto, hitsLayer } from './render.js'
+import { photoSelection, photoGesture } from './transform.js'
+import { createArtToolbar } from '../art-toolbar.js'
 import { readArtwork } from '../artwork.js'
 import { takeTransfer } from '../mockup-transfer.js'
 
 const $ = id => document.getElementById(id)
 const canvas = $('scene-canvas')
 const overlay = $('selection-canvas')
+const stack = $('canvas-stack')
+const stage = $('drop-stage')
+const handleBox = $('photo-handles')
+const handles = [...handleBox.querySelectorAll('.handle')]
+const corners = handles.filter(handle => handle.dataset.gesture === 'scale')
+const [rotateHandle, moveHandle] = handles.slice(-2)
+const placeToolbar = createArtToolbar($('art-tools'), stage)
 const artImages = new Map()
 const scenes = new Map(catalog.map(scene => [scene.id, scene]))
 const drafts = new Map()
@@ -24,8 +33,9 @@ let pending
 let repaint = 0
 
 function status(message, error = false) {
-  $('status').textContent = message
-  $('status').classList.toggle('error', error)
+  const line = $($('mockup-editor').hidden ? 'library-status' : 'status')
+  line.textContent = message
+  line.classList.toggle('error', error)
 }
 
 function withLock(callback) {
@@ -75,8 +85,8 @@ function renderCatalog() {
     const button = document.createElement('button')
     button.className = 'scene-card'
     button.type = 'button'
-    button.setAttribute('aria-pressed', String(scene.id === active?.id))
     const thumb = new Image()
+    thumb.loading = 'lazy'
     thumb.alt = ''
     thumb.src = scene.photo
     const description = document.createElement('span')
@@ -86,7 +96,7 @@ function renderCatalog() {
     subtitle.textContent = scene.view + ' · ' + scene.style
     description.append(name, subtitle)
     button.append(thumb, description)
-    button.addEventListener('click', () => withLock(() => activate(scene)))
+    button.addEventListener('click', () => withLock(() => openScene(scene)))
     list.append(button)
   }
   if (!list.childElementCount) {
@@ -127,10 +137,45 @@ async function activate(scene, saved, loaded) {
   history = saved ? createHistory() : draft?.history ?? createHistory()
   gesture = undefined
   zoneMode = false
+  overlay.classList.remove('zone-mode')
   preview(true)
   renderCatalog()
   status('')
 }
+
+function setScreen(sceneId, navigation) {
+  const edit = Boolean(sceneId)
+  if (navigation) {
+    const url = new URL(location.href)
+    url.searchParams.delete('arte')
+    if (edit) url.searchParams.set('cena', sceneId)
+    else url.searchParams.delete('cena')
+    if (url.href !== location.href) window.history[navigation + 'State'](null, '', url)
+  }
+  $('library-home').hidden = edit
+  $('mockup-editor').hidden = !edit
+  $('save-project').hidden = !edit
+  if (edit) preview()
+  else renderCatalog()
+  window.scrollTo(0, 0)
+}
+
+async function openScene(scene, saved, loaded, navigation = 'push') {
+  await activate(scene, saved, loaded)
+  setScreen(scene.id, navigation)
+}
+
+$('back-library').addEventListener('click', () => setScreen(null, 'push'))
+$('mockups-nav').addEventListener('click', event => {
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+  event.preventDefault()
+  setScreen(null, 'push')
+})
+window.addEventListener('popstate', () => withLock(async () => {
+  const scene = scenes.get(new URLSearchParams(location.search).get('cena'))
+  if (scene) await openScene(scene, undefined, undefined, '')
+  else setScreen(null, '')
+}))
 
 function commit(next) {
   if (!project || next === project) return
@@ -177,9 +222,7 @@ function syncUI() {
     name.textContent = item.name
     button.append(thumb, name)
     button.addEventListener('click', () => {
-      project = { ...project, selected: item.id }
-      syncUI()
-      drawGuides()
+      selectLayer(item)
     })
     li.append(button)
     list.append(li)
@@ -193,7 +236,7 @@ function syncUI() {
 
 function draw() {
   repaint = 0
-  if (!project) return
+  if (!project || $('mockup-editor').hidden) return
   const [width, height] = exportSize(project.format, resources.photo.width, resources.photo.height)
   const scale = Math.min(720 / width, 680 / height)
   const w = Math.round(width * scale), h = Math.round(height * scale)
@@ -206,11 +249,14 @@ function draw() {
 }
 
 function drawGuides() {
-  if (!frame) return
+  if (!frame || $('mockup-editor').hidden) return
   const ctx = overlay.getContext('2d')
   ctx.clearRect(0, 0, overlay.width, overlay.height)
+  const layer = guides && !zoneMode && selectedLayer(project)
+  handleBox.hidden = !layer
+  if (!layer) placeToolbar(null)
   if (!guides && !zoneMode) return
-  if (zoneMode || (guides && project.layers.length === 0)) {
+  if (zoneMode || project.layers.length === 0) {
     const zone = project.zone
     ctx.strokeStyle = '#ff9d85'
     ctx.lineWidth = 1.6
@@ -219,22 +265,48 @@ function drawGuides() {
       zone.w * frame.w, zone.h * frame.h)
     ctx.setLineDash([])
   }
-  const layer = selectedLayer(project)
-  if (layer && !zoneMode) {
-    const [w, h] = layerSize(layer, frame.w, frame.h)
-    ctx.save()
-    ctx.translate(frame.x + layer.x * frame.w, frame.y + layer.y * frame.h)
-    ctx.rotate(layer.rotation * Math.PI / 180)
-    ctx.strokeStyle = '#ff9d85'
-    ctx.fillStyle = '#ff9d85'
-    ctx.lineWidth = 1.5
-    ctx.strokeRect(-w / 2, -h / 2, w, h)
-    for (const x of [-w / 2, w / 2]) {
-      for (const y of [-h / 2, h / 2]) ctx.fillRect(x - 2, y - 2, 4, 4)
-    }
-    ctx.restore()
+  if (!layer) return
+
+  const form = photoSelection(layer, frame.w, frame.h)
+  const center = { x: frame.x + form.x, y: frame.y + form.y }
+  const projected = (x, y) => {
+    const v = form.vector(x, y)
+    return { x: center.x + v.x, y: center.y + v.y }
   }
+  const place = (element, pixel) => {
+    element.style.left = pixel.x / overlay.width * 100 + '%'
+    element.style.top = pixel.y / overlay.height * 100 + '%'
+  }
+  const points = corners.map(handle => {
+    const point = projected(Number(handle.dataset.x), Number(handle.dataset.y))
+    place(handle, point)
+    return point
+  })
+  const top = projected(0, -1)
+  const normal = form.vector(0, -1)
+  const length = Math.hypot(normal.x, normal.y)
+  const offset = 24 * overlay.width / Math.max(1, overlay.clientWidth)
+  const rotation = { x: top.x + normal.x * offset / length, y: top.y + normal.y * offset / length }
+  place(rotateHandle, rotation)
+  place(moveHandle, center)
+  ctx.beginPath()
+  ctx.moveTo(points[0].x, points[0].y)
+  for (const point of points.slice(1)) ctx.lineTo(point.x, point.y)
+  ctx.closePath()
+  ctx.moveTo(top.x, top.y)
+  ctx.lineTo(rotation.x, rotation.y)
+  ctx.strokeStyle = '#ff9d85'
+  ctx.lineWidth = 1.4
+  ctx.stroke()
+
+  const viewport = stage.getBoundingClientRect()
+  const photo = overlay.getBoundingClientRect()
+  placeToolbar({
+    x: photo.left - viewport.left + Math.max(...points.map(point => point.x)) * photo.width / overlay.width,
+    y: photo.top - viewport.top + Math.min(rotation.y, ...points.map(point => point.y)) * photo.height / overlay.height
+  })
 }
+new ResizeObserver(() => drawGuides()).observe(stack)
 
 function controls(panel) {
   for (const button of document.querySelectorAll('[data-panel]')) {
@@ -256,50 +328,58 @@ for (const button of document.querySelectorAll('[data-panel]')) {
 function getPoint(event) {
   const box = overlay.getBoundingClientRect()
   return {
-    x: clamp(((event.clientX - box.left) * overlay.width / box.width - frame.x) / frame.w, 0, 1),
-    y: clamp(((event.clientY - box.top) * overlay.height / box.height - frame.y) / frame.h, 0, 1)
+    x: (event.clientX - box.left) * overlay.width / box.width - frame.x,
+    y: (event.clientY - box.top) * overlay.height / box.height - frame.y
   }
 }
 
-overlay.addEventListener('pointerdown', event => {
-  if (!frame || busy || event.button !== 0) return
-  const point = getPoint(event)
-  const current = selectedLayer(project)
-  let resize = false
-  if (current && guides && !zoneMode) {
-    const dx = (point.x - current.x) * frame.w, dy = (point.y - current.y) * frame.h
-    const angle = current.rotation * Math.PI / 180
-    const [w, h] = layerSize(current, frame.w, frame.h)
-    const tolerance = 11 * overlay.width / overlay.getBoundingClientRect().width
-    resize = Math.abs(Math.abs(dx * Math.cos(angle) + dy * Math.sin(angle)) - w / 2) < tolerance &&
-      Math.abs(Math.abs(dy * Math.cos(angle) - dx * Math.sin(angle)) - h / 2) < tolerance
+function selectLayer(layer) {
+  project = { ...project, selected: layer?.id ?? null }
+  if (layer && !guides) {
+    guides = true
+    $('toggle-guides').setAttribute('aria-pressed', 'true')
   }
-  const layer = resize ? current : project.layers.slice().reverse()
-    .find(item => hitsLayer(item, point.x, point.y, frame.w, frame.h))
+  syncUI()
+  drawGuides()
+}
+
+stack.addEventListener('pointerdown', event => {
+  if (!frame || busy || gesture || event.button !== 0 || !event.isPrimary) return
+  const point = getPoint(event)
+  const handle = event.target.closest('.handle')
+  let transform
   if (!zoneMode) {
-    project = { ...project, selected: layer?.id ?? null }
-    syncUI()
-    drawGuides()
+    const layer = handle ? selectedLayer(project) : project.layers.slice().reverse()
+      .find(item => hitsLayer(item, point.x / frame.w, point.y / frame.h, frame.w, frame.h))
+    if (!handle) selectLayer(layer)
     if (!layer) return
     controls('layers')
+    const kind = handle?.dataset.gesture ?? 'move'
+    const corner = kind === 'scale' ? { x: Number(handle.dataset.x), y: Number(handle.dataset.y) } : null
+    transform = photoGesture(layer, kind, point, frame.w, frame.h, corner)
   }
-  overlay.setPointerCapture(event.pointerId)
-  gesture = { point, layer, resize, before: project, id: event.pointerId }
+  if (handle) handle.focus({ preventScroll: true })
+  event.preventDefault()
+  stack.setPointerCapture(event.pointerId)
+  gesture = { point, transform, before: project, id: event.pointerId }
 })
 
-overlay.addEventListener('pointermove', event => {
+stage.addEventListener('pointerdown', event => {
+  if (event.target === stage && event.button === 0 && project && !zoneMode) selectLayer(null)
+})
+
+stack.addEventListener('pointermove', event => {
   if (event.pointerId !== gesture?.id) return
   const point = getPoint(event)
   const origin = gesture.point
   if (zoneMode) {
-    const w = Math.abs(point.x - origin.x), h = Math.abs(point.y - origin.y)
-    project = { ...project, zone: { x: (point.x + origin.x) / 2, y: (point.y + origin.y) / 2, w, h } }
+    const x0 = clamp(origin.x / frame.w, 0, 1), y0 = clamp(origin.y / frame.h, 0, 1)
+    const x1 = clamp(point.x / frame.w, 0, 1), y1 = clamp(point.y / frame.h, 0, 1)
+    project = { ...project, zone: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) } }
   } else {
-    const layer = gesture.layer
-    const distance = p => Math.hypot((p.x - layer.x) * frame.w, (p.y - layer.y) * frame.h)
-    project = editLayer(project, gesture.resize ?
-      { w: clamp(layer.w * distance(point) / Math.max(1, distance(origin)), .01, 1.5) } :
-      { x: clamp(layer.x + point.x - origin.x, 0, 1), y: clamp(layer.y + point.y - origin.y, 0, 1) })
+    const change = gesture.transform(point, event.shiftKey)
+    if (!change) return
+    project = editLayer(project, change)
     updateSliders()
   }
   preview()
@@ -314,14 +394,33 @@ function finishGesture(event, cancel) {
   if (!cancel && zoneMode) {
     zoneMode = false
     overlay.classList.remove('zone-mode')
-    status('Área estampável atualizada.')
+    status(project === before ? 'A área é pequena demais.' : 'Área estampável atualizada.', project === before)
   }
   preview(true)
 }
 
-overlay.addEventListener('pointerup', event => finishGesture(event, false))
-overlay.addEventListener('pointercancel', event => finishGesture(event, true))
-overlay.addEventListener('lostpointercapture', event => finishGesture(event, true))
+stack.addEventListener('pointerup', event => finishGesture(event, false))
+stack.addEventListener('pointercancel', event => finishGesture(event, true))
+stack.addEventListener('lostpointercapture', event => finishGesture(event, true))
+
+for (const handle of handles) {
+  handle.addEventListener('keydown', event => {
+    const delta = { ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1 }[event.key]
+    const layer = selectedLayer(project)
+    if (!delta || !layer) return
+    event.preventDefault()
+    const amount = event.shiftKey ? 5 : 1
+    const kind = handle.dataset.gesture
+    if (kind === 'rotate') {
+      commit(editLayer(project, { rotation: ((layer.rotation + delta * amount + 540) % 360) - 180 }))
+    } else if (kind === 'scale') {
+      commit(editLayer(project, { w: clamp(layer.w + .01 * delta * amount, .01, 1.5) }))
+    } else {
+      const axis = event.key === 'ArrowUp' || event.key === 'ArrowDown' ? 'y' : 'x'
+      commit(editLayer(project, { [axis]: clamp(layer[axis] + .01 * delta * amount, 0, 1) }))
+    }
+  })
+}
 
 $('draw-zone').addEventListener('click', () => {
   zoneMode = !zoneMode
@@ -383,7 +482,7 @@ $('redo').addEventListener('click', () => {
   preview(true)
 })
 document.addEventListener('keydown', event => {
-  if (!project || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z' ||
+  if ($('mockup-editor').hidden || !project || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z' ||
       event.target.matches('input, textarea, select, [contenteditable]')) return
   event.preventDefault()
   $(event.shiftKey ? 'redo' : 'undo').click()
@@ -424,7 +523,6 @@ $('art-file').addEventListener('change', event => {
   event.target.value = ''
   if (files.length) withLock(() => importArts(files))
 })
-const stage = $('drop-stage')
 stage.addEventListener('dragover', event => {
   event.preventDefault()
   stage.classList.add('drag-over')
@@ -458,7 +556,7 @@ $('photo-form').addEventListener('submit', event => {
         zone: { x: .5, y: .5, w: .46, h: .46 }, photo: photo.source, mask, upscaled: photo.upscaled,
         origin: 'Foto local do usuário', usage: 'Uso local', custom: true
       }
-      await activate(scene, newProject(scene))
+      await openScene(scene, newProject(scene))
       scenes.set(scene.id, scene)
       for (const field of ['category', 'view', 'style']) $('filter-' + field).value = ''
       renderCatalog()
@@ -509,7 +607,7 @@ $('project-file').addEventListener('change', event => {
     for (const layer of saved.layers) {
       if (!artImages.has(layer.source)) artImages.set(layer.source, await loadImage(layer.source))
     }
-    await activate(scene, saved, images)
+    await openScene(scene, saved, images)
     scenes.set(scene.id, scene)
     renderCatalog()
     status('Projeto reaberto.')
@@ -532,15 +630,26 @@ for (const [format, type] of [['png', 'image/png'], ['jpeg', 'image/jpeg']]) {
   }))
 }
 
+renderCatalog()
 withLock(async () => {
-  const hasTransfer = new URLSearchParams(location.search).has('arte')
-  const transfer = hasTransfer ? await takeTransfer().catch(() => null) : null
-  const scene = (transfer?.side === 'back' && catalog.find(item => item.view === 'Costas')) || catalog[0]
-  await activate(scene)
-  if (transfer?.version === 1) {
-    const file = new File([transfer.blob], transfer.name, { type: transfer.blob.type })
-    await importArts([file])
-  } else if (hasTransfer) {
-    status('Estampa indisponível. Você pode importar o PNG neste editor.', true)
+  const params = new URLSearchParams(location.search)
+  const hasTransfer = params.has('arte')
+  if (hasTransfer) {
+    const transfer = await takeTransfer().catch(() => null)
+    if (transfer?.version === 1) {
+      const scene = (transfer.side === 'back' && catalog.find(item => item.view === 'Costas')) || catalog[0]
+      await openScene(scene, undefined, undefined, 'replace')
+      await importArts([new File([transfer.blob], transfer.name, { type: transfer.blob.type })])
+    } else {
+      setScreen(null, 'replace')
+      status('Estampa indisponível. Escolha uma foto e importe o PNG no editor.', true)
+    }
+    return
+  }
+  const scene = scenes.get(params.get('cena'))
+  if (scene) await openScene(scene, undefined, undefined, '')
+  else if (params.has('cena')) {
+    setScreen(null, 'replace')
+    status('Abra o arquivo de projeto para recuperar a foto local.')
   }
 })

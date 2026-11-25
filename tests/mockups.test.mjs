@@ -5,6 +5,7 @@ import {
   dimensions, exportSize, newProject, addLayer, editLayer, moveLayer, duplicateLayer, deleteLayer,
   selectedLayer, createHistory, validateProject, finishes, lights, shadows
 } from '../dist/mockups/state.js'
+import { photoGesture, photoSelection } from '../dist/mockups/transform.js'
 import { preparePhoto, paintScene } from '../dist/mockups/render.js'
 
 globalThis.document = { createElement: () => createCanvas(1, 1) }
@@ -29,7 +30,7 @@ test('layer order, finish, duplicate, delete and history survive serializing the
   const copy = selectedLayer(pair)
   assert.notEqual(copy.id, original.id)
   assert.notEqual(copy.x, original.x)
-  assert.equal(pair.layers[0].finish, 'dtg')
+  assert.equal(pair.layers[0].finish, 'direct')
   const swapped = moveLayer(pair, -1)
   assert.deepEqual(swapped.layers.map(layer => layer.id), [copy.id, original.id])
   const history = createHistory()
@@ -42,7 +43,7 @@ test('layer order, finish, duplicate, delete and history survive serializing the
   assert.throws(() => validateProject({ ...swapped, layer: null, light: 'missing' }), /inválido/)
 })
 
-test('masked artwork, all five finishes and 25 combinations render deterministically', async () => {
+test('masked artwork, all six finish options and 25 combinations render deterministically', async () => {
   const photo = await loadImage(new URL('../dist/mockups/assets/camiseta-estonada.webp', import.meta.url))
   const map = preparePhoto(photo, null, 160, 160)
   assert.equal(map.alpha[0], 0)
@@ -64,7 +65,7 @@ test('masked artwork, all five finishes and 25 combinations render deterministic
   assert.deepEqual(measure.getImageData(0, 0, 1, 1).data, background)
   const inks = new Set(Object.keys(finishes).map(finish =>
     render(editLayer(project, { finish })).toString('base64')))
-  assert.equal(inks.size, 5)
+  assert.equal(inks.size, 6)
   const variations = new Set()
   for (const light of Object.keys(lights)) {
     for (const shadow of Object.keys(shadows)) {
@@ -73,4 +74,45 @@ test('masked artwork, all five finishes and 25 combinations render deterministic
   }
   assert.equal(variations.size, 25)
   assert.deepEqual(render(project), gold)
+})
+
+test('mouse movement, corner scaling and rotation use photo coordinates', () => {
+  const layer = { x: .5, y: .5, w: .4, width: 100, height: 50, rotation: 0 }
+  const form = photoSelection(layer, 500, 500)
+  const corner = form.vector(1, 1)
+  const bottomRight = { x: form.x + corner.x, y: form.y + corner.y }
+  const resize = photoGesture(layer, 'scale', bottomRight, 500, 500, { x: 1, y: 1 })
+  const larger = { ...layer, ...resize({ x: 450, y: 350 }) }
+  assert.ok(larger.w > layer.w)
+  const anchored = photoSelection(larger, 500, 500)
+  const topLeft = anchored.vector(-1, -1)
+  assert.ok(Math.abs(anchored.x + topLeft.x - 150) < 1e-9)
+  assert.ok(Math.abs(anchored.y + topLeft.y - 200) < 1e-9)
+  const rotate = photoGesture(layer, 'rotate', { x: 250, y: 150 }, 500, 500)
+  assert.equal(rotate({ x: 350, y: 250 }).rotation, 90)
+  assert.equal(rotate({ x: 300, y: 150 }, true).rotation, 30)
+  const move = photoGesture(layer, 'move', { x: 250, y: 250 }, 500, 500)
+  assert.deepEqual(move({ x: 300, y: 125 }), { x: .6, y: .25 })
+})
+
+test('direct PNG uses the artwork pixels without cloth warping or ink treatment', () => {
+  const width = 80, height = 80
+  const garment = createCanvas(width, height)
+  const cloth = garment.getContext('2d')
+  const gradient = cloth.createLinearGradient(0, 0, width, height)
+  gradient.addColorStop(0, '#0a0a0a')
+  gradient.addColorStop(1, '#707070')
+  cloth.fillStyle = gradient
+  cloth.fillRect(0, 0, width, height)
+  const map = preparePhoto(garment, null, width, height)
+  const ink = createCanvas(16, 16)
+  const inkContext = ink.getContext('2d')
+  inkContext.fillStyle = '#22a8ed'
+  inkContext.fillRect(0, 0, 8, 16)
+  const project = addLayer(newProject(reference), png, 'Direct', 16, 16, 1)
+  const stage = createCanvas(width, height)
+  paintScene(stage, project, map, new Map([[png, ink]]))
+  const ctx = stage.getContext('2d')
+  assert.deepEqual([...ctx.getImageData(35, 40, 1, 1).data], [34, 168, 237, 255])
+  assert.deepEqual([...ctx.getImageData(46, 40, 1, 1).data], [...cloth.getImageData(46, 40, 1, 1).data])
 })
