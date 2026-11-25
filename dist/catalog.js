@@ -1,0 +1,5 @@
+export const zimmCatalog = [
+  {"label": "Premium", "fit": "premium", "finish": "cotton", "url": "https://www.zimmbrasil.com/camisetas-premium/camisetas-premium", "colors": [["Azul Marinho", "#252c45"], ["Branco", "#f1f0ea"], ["Off-white", "#dedbd2"], ["Mostarda", "#b88831"], ["Preto", "#252528"], ["Bordô", "#692e3d"], ["Vermelho", "#9c312e"], ["Marrom", "#624638"]]},
+  {"label": "Oversized", "fit": "oversized", "finish": "cotton", "url": "https://www.zimmbrasil.com/camisetas-oversized/camisetas-oversized", "colors": [["Azul Marinho", "#252c45"], ["Branco", "#f1f0ea"], ["Marrom", "#624638"], ["Preto", "#252528"], ["Off-white", "#dedbd2"]]},
+  {"label": "Estonada", "fit": "regular", "finish": "washed", "url": "https://www.zimmbrasil.com/camisetas-estonadas/camisetas-estonadas", "colors": [["Azul petróleo", "#516d75"], ["Cinza Chumbo", "#565859"], ["Cinza Mescla", "#a0a0a0"], ["Verde Militar", "#6c7056"], ["Marrom", "#795b4d"], ["Terracota", "#a56854"], ["Azul Royal", "#4c6694"], ["Preto", "#3b3a3c"], ["Laranja", "#c08662"], ["Areia", "#c3b19a"]]}
+]

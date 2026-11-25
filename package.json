@@ -1,0 +1,14 @@
+{
+  "name": "doutelab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --import ./tests/setup.mjs --test tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22.15"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "0.1.80"
+  }
+}
