@@ -81,10 +81,7 @@ function sampleArt() {
   ctx.textAlign = 'center'
   ctx.fillStyle = '#191a20'
   ctx.font = 'italic 950 120px Arial Black, Arial, sans-serif'
-  ctx.fillText('DOGMA', 0, 223)
-  ctx.font = '800 35px Arial, sans-serif'
-  ctx.fillStyle = '#bd332b'
-  ctx.fillText('jpeg', 200, 232)
+  ctx.fillText('doutelab', 0, 223, 630)
   return canvas
 }
 

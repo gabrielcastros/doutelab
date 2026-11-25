@@ -121,7 +121,7 @@ async function encodeZip(capture, camera, orbit, filename, progress) {
 export async function exportMockup(format, snapshot, progress) {
   const { camera } = snapshot
   const slug = snapshot.model.label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')
-  const filename = 'dogmajpeg-' + slug
+  const filename = 'doutelab-' + slug
   const resolution = format === 'gif' ? 560 : format === 'zip' ? 1200 : 1800
   const aspect = format === 'png' ? camera.aspect : 1
   const capture = makeCapture(

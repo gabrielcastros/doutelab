@@ -9,7 +9,6 @@ button:focus-visible,select:focus-visible,input:focus-visible,.dropzone:focus-wi
 .topbar{height:3.65rem;display:flex;align-items:center;gap:1.04rem;padding:0 1.18rem;background:#202125;border-bottom:1px solid var(--line)}
 .wordmark{display:flex;align-items:baseline;white-space:nowrap;letter-spacing:-.08em}
 .wordmark b{font-family:"Arial Black",Arial,sans-serif;font-size:1.31rem;font-style:italic;font-weight:950}
-.wordmark span{font-size:.86rem;font-weight:800;color:var(--accent);margin-left:.18rem;letter-spacing:-.045em}
 h1{border-left:1px solid #53545b;margin:0;padding-left:1.04rem;color:#dddde3;font-weight:600;font-size:.91rem}
 .workspace{display:grid;grid-template-columns:minmax(0,1fr) 17.7rem;min-height:calc(100svh - 3.65rem)}
 .viewer{display:grid;grid-template-rows:auto minmax(31rem,1fr) auto;min-width:0;background:#202126}

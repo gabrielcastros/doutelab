@@ -1,6 +1,6 @@
-# DouteLab · Estúdio 3D
+# doutelab · Estúdio 3D
 
-Editor no navegador para aplicar artes PNG e SVG na frente e nas costas de camisetas e exportar imagens ou animações. A interface migrada ainda usa a identidade DOGMAjpeg do protótipo.
+Editor no navegador para aplicar artes PNG e SVG na frente e nas costas de camisetas e exportar imagens ou animações.
 
 ## Rodar localmente
 

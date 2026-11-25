@@ -43,7 +43,7 @@ async function capture(format) {
   const { blob, filename } = await exportMockup(format, {
     model: zimmCatalog[1], color: '#dedbd2', target, camera: camera.clone(), prints: { front, back }
   }, () => {})
-  assert.equal(filename, 'dogmajpeg-oversized.' + format)
+  assert.equal(filename, 'doutelab-oversized.' + format)
   return blob
 }
 
@@ -66,7 +66,7 @@ test('ZIP export has five distinct square PNG views', async () => {
   assert.equal(entries.length, 5)
   const views = new Set()
   for (const [index, [name, bytes]] of entries.entries()) {
-    assert.equal(name, 'dogmajpeg-oversized-0' + (index + 1) + '.png')
+    assert.equal(name, 'doutelab-oversized-0' + (index + 1) + '.png')
     const image = await loadImage(Buffer.from(bytes))
     assert.equal(image.width, 1200)
     assert.equal(image.height, 1200)

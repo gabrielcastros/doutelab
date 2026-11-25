@@ -4,7 +4,7 @@ Versão 0.1 · Proposta para desenvolvimento
 
 ## Objetivo
 
-Criar mockups fotográficos de peças lisas no dogmaJPEG, com várias artes por cena, acabamentos por camada, iluminação e sombras ajustáveis e exportação offline. O usuário pode importar uma arte diretamente ou reaproveitar a arte do editor 3D.
+Criar mockups fotográficos de peças lisas no doutelab, com várias artes por cena, acabamentos por camada, iluminação e sombras ajustáveis e exportação offline. O usuário pode importar uma arte diretamente ou reaproveitar a arte do editor 3D.
 
 ## Fluxo principal
 
