@@ -1,20 +1,25 @@
+import { bindShortcuts, describeHandleKeys } from '../shortcuts.js'
 import { categories, views, styles, catalog } from './catalog.js'
 import {
   finishes, lights, shadows, formats, clamp, exportSize, newProject, createHistory,
-  selectedLayer, addLayer, editLayer, duplicateLayer, deleteLayer, moveLayer, validateProject, imageData
+  selectedLayer, addLayer, editLayer, duplicateLayer, deleteLayer, moveLayer,
+  printAreaOf, rectBetween, validateProject, imageData
 } from './state.js'
 import { canvasOf, canvasBlob, asDataURL, localImage, loadImage, download, projectLimit } from './files.js'
-import { paintScene, preparePhoto, hitsLayer } from './render.js'
+import { paintScene, preparePhoto, hitsLayer, layerPoint } from './render.js'
 import { photoSelection, photoGesture } from './transform.js'
 import { createArtToolbar } from '../art-toolbar.js'
-import { readArtwork } from '../artwork.js'
+import { readArtwork, starterArtworkFile } from '../artwork.js'
 import { takeTransfer } from '../mockup-transfer.js'
+import { bindInspector, compactEditor } from '../editor-layout.js'
 
 const $ = id => document.getElementById(id)
 const canvas = $('scene-canvas')
 const overlay = $('selection-canvas')
 const stack = $('canvas-stack')
 const stage = $('drop-stage')
+const zoomButton = $('preview-zoom')
+const setInspectorOpen = bindInspector($('mockup-editor'))
 const handleBox = $('photo-handles')
 const handles = [...handleBox.querySelectorAll('.handle')]
 const corners = handles.filter(handle => handle.dataset.gesture === 'scale')
@@ -27,7 +32,7 @@ const sceneImages = new WeakMap()
 let active, resources, project, history, previewMap, frame
 let busy = false
 let guides = true
-let zoneMode = false
+let areaMode = null
 let gesture
 let pending
 let repaint = 0
@@ -58,7 +63,7 @@ function selectValues(id, values, all) {
 options($('finish'), finishes)
 options($('format'), formats)
 for (const [field, values, all] of [
-  ['category', categories, 'Todas as peças'], ['view', views, 'Todas as vistas'], ['style', styles, 'Apresentação']
+  ['category', categories, 'Todas as peças'], ['view', views, 'Todas as vistas'], ['style', styles, 'Todas']
 ]) {
   selectValues('filter-' + field, values, all)
   selectValues('photo-' + field, values)
@@ -85,6 +90,7 @@ function renderCatalog() {
     const button = document.createElement('button')
     button.className = 'scene-card'
     button.type = 'button'
+    button.dataset.sceneId = scene.id
     const thumb = new Image()
     thumb.loading = 'lazy'
     thumb.alt = ''
@@ -100,9 +106,21 @@ function renderCatalog() {
     list.append(button)
   }
   if (!list.childElementCount) {
-    const empty = document.createElement('p')
-    empty.className = 'muted'
-    empty.textContent = 'Nenhuma foto com estes filtros.'
+    const empty = document.createElement('div')
+    empty.className = 'empty-catalog'
+    const message = document.createElement('p')
+    message.className = 'muted'
+    message.setAttribute('role', 'status')
+    message.textContent = 'Nenhuma foto com estes filtros.'
+    const reset = document.createElement('button')
+    reset.type = 'button'
+    reset.textContent = 'Limpar filtros'
+    reset.addEventListener('click', () => {
+      for (const [field] of filters) $('filter-' + field).value = ''
+      renderCatalog()
+      $('filter-category').focus()
+    })
+    empty.append(message, reset)
     list.append(empty)
   }
 }
@@ -110,34 +128,54 @@ function renderCatalog() {
 function photoMap(images, longSide) {
   const { photo, mask } = images
   const scale = longSide / Math.max(photo.width, photo.height)
-  return preparePhoto(photo, mask, Math.max(1, Math.round(photo.width * scale)), Math.max(1, Math.round(photo.height * scale)))
+  return {
+    ...preparePhoto(photo, mask, Math.max(1, Math.round(photo.width * scale)), Math.max(1, Math.round(photo.height * scale))),
+    concrete: images.concrete
+  }
 }
 
+let concrete
+let starter
+const exampleLayers = new Set()
 async function prepareScene(scene) {
   if (sceneImages.has(scene)) return sceneImages.get(scene)
-  const [photo, mask] = await Promise.all([loadImage(scene.photo), scene.mask ? loadImage(scene.mask) : null])
+  concrete ??= loadImage(new URL('./assets/concrete-202l.webp', import.meta.url))
+  const [photo, mask, background] = await Promise.all([
+    loadImage(scene.photo), scene.mask ? loadImage(scene.mask) : null, concrete
+  ])
   if (mask && Math.abs(photo.width / photo.height - mask.width / mask.height) > .015) {
     throw new Error('A máscara precisa ter o mesmo enquadramento e proporção da foto.')
   }
-  const images = { photo, mask }
+  const images = { photo, mask, concrete: background }
   sceneImages.set(scene, images)
   return images
 }
 
-async function activate(scene, saved, loaded) {
+async function activate(scene, saved, loaded, addStarter) {
   if (active?.id === scene.id && !saved) return
   const images = loaded ?? await prepareScene(scene)
   const map = photoMap(images, 720)
-  if (project) drafts.set(active.id, { project, history })
+  const fresh = !saved && !drafts.has(scene.id)
+  const defaultArt = fresh && addStarter ? await (starter ??= starterArtworkFile().then(prepareArtwork)) : null
+  if (project) {
+    finishAdjustment()
+    drafts.set(active.id, { project, history })
+  }
   const draft = drafts.get(scene.id)
   active = scene
   resources = images
   previewMap = map
   project = saved ?? draft?.project ?? newProject(scene)
+  if (defaultArt) {
+    project = appendArtwork(project, defaultArt)
+    exampleLayers.add(project.selected)
+    project = { ...project, selected: null }
+  }
   history = saved ? createHistory() : draft?.history ?? createHistory()
+  $('shadow-adjustments').open = false
+  zoomButton.setAttribute('aria-pressed', 'false')
   gesture = undefined
-  zoneMode = false
-  overlay.classList.remove('zone-mode')
+  setAreaMode(null)
   preview(true)
   renderCatalog()
   status('')
@@ -145,6 +183,7 @@ async function activate(scene, saved, loaded) {
 
 function setScreen(sceneId, navigation) {
   const edit = Boolean(sceneId)
+  const wasEditing = !$('mockup-editor').hidden
   if (navigation) {
     const url = new URL(location.href)
     url.searchParams.delete('arte')
@@ -156,12 +195,23 @@ function setScreen(sceneId, navigation) {
   $('mockup-editor').hidden = !edit
   $('save-project').hidden = !edit
   if (edit) preview()
-  else renderCatalog()
+  else {
+    setInspectorOpen(false)
+    setAreaMode(null)
+    renderCatalog()
+  }
   window.scrollTo(0, 0)
+  if (edit && !wasEditing && !$('photo-dialog').open) {
+    $('scene-name').focus({ preventScroll: true })
+  } else if (!edit && wasEditing) {
+    const card = [...$('catalog').querySelectorAll('.scene-card')].find(item => item.dataset.sceneId === active?.id)
+    const target = card ?? $('library-title')
+    target.focus({ preventScroll: true })
+  }
 }
 
-async function openScene(scene, saved, loaded, navigation = 'push') {
-  await activate(scene, saved, loaded)
+async function openScene(scene, saved, loaded, navigation = 'push', addStarter = true) {
+  await activate(scene, saved, loaded, addStarter)
   setScreen(scene.id, navigation)
 }
 
@@ -179,6 +229,7 @@ window.addEventListener('popstate', () => withLock(async () => {
 
 function commit(next) {
   if (!project || next === project) return
+  finishAdjustment()
   history.record(project)
   project = next
   preview(true)
@@ -197,23 +248,37 @@ function syncUI() {
   $('undo').disabled = !history.canUndo
   $('redo').disabled = !history.canRedo
   $('layer-editor').hidden = !layer
+  $('svg-color').hidden = layer?.kind !== 'SVG'
+  $('svg-ink').value = layer?.ink ?? '#ff665a'
+  $('svg-original').setAttribute('aria-pressed', String(!layer?.ink))
   $('empty-layers').hidden = Boolean(project.layers.length)
   $('raise').disabled = index >= project.layers.length - 1
   $('lower').disabled = index <= 0
   $('finish-all').disabled = project.layers.length < 2
-  $('shadow-adjustments').hidden = project.shadow === 'none'
+  const shadowAdjustments = $('shadow-adjustments')
+  shadowAdjustments.hidden = project.shadow === 'none'
+  if (shadowAdjustments.hidden) shadowAdjustments.open = false
   $('format').value = project.format
+  $('reset-crop').hidden = !layer?.crop
+  const area = printAreaOf(project)
+  $('print-area-status').textContent = area ? 'Área delimitada na foto' : 'Peça inteira'
+  $('reset-zone').hidden = !area
+  $('protect-neckline').checked = Boolean(project.protectNeckline)
+  $('draw-neckline').hidden = Boolean(active.neckline)
+  $('draw-neckline').textContent = project.neckline ? 'Ajustar marcação da gola' : 'Marcar gola na foto'
 
   const [w, h] = exportSize(project.format, resources.photo.width, resources.photo.height)
   $('export-dimensions').textContent = w + ' × ' + h + ' px'
 
   const list = $('layer-list')
+  const focusedLayer = list.contains(document.activeElement) ? document.activeElement.dataset.layerId : null
   list.replaceChildren()
   for (const item of project.layers.slice().reverse()) {
     const li = document.createElement('li')
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'layer-button'
+    button.dataset.layerId = item.id
     button.setAttribute('aria-pressed', String(item.id === project.selected))
     const thumb = new Image()
     thumb.alt = ''
@@ -224,55 +289,107 @@ function syncUI() {
     button.addEventListener('click', () => {
       selectLayer(item)
     })
-    li.append(button)
+    const remove = $('layer-delete-template').content.firstElementChild.cloneNode(true)
+    remove.setAttribute('aria-label', 'Excluir ' + item.name)
+    remove.addEventListener('click', () => {
+      commit(deleteLayer(project, item.id))
+      const nextControl = list.querySelector('.layer-delete') ?? $('add-art')
+      nextControl.focus({ preventScroll: true })
+    })
+    li.append(button, remove)
     list.append(li)
+    if (focusedLayer === item.id) button.focus({ preventScroll: true })
   }
   for (const group of ['light', 'shadow']) {
     for (const button of $(group + '-options').children) button.setAttribute('aria-pressed', String(button.dataset.value === project[group]))
   }
-  if (layer) $('finish').value = layer.finish
+  const finish = $('finish')
+  finish.options[0].textContent = layer?.kind === 'SVG' ? 'SVG direto' : finishes.direct
+  if (layer) finish.value = layer.finish
   updateSliders()
 }
 
 function draw() {
   repaint = 0
   if (!project || $('mockup-editor').hidden) return
-  const [width, height] = exportSize(project.format, resources.photo.width, resources.photo.height)
-  const scale = Math.min(720 / width, 680 / height)
-  const w = Math.round(width * scale), h = Math.round(height * scale)
+  const width = stack.clientWidth, height = stack.clientHeight
+  if (!width || !height) return
+  const scale = Math.min(1, 1120 / Math.max(width, height))
+  const w = Math.max(1, Math.round(width * scale)), h = Math.max(1, Math.round(height * scale))
   if (canvas.width !== w || canvas.height !== h) {
     canvas.width = overlay.width = w
     canvas.height = overlay.height = h
   }
-  frame = paintScene(canvas, project, previewMap, artImages)
+  let composition = { width: w, height: h }
+  if (project.format !== 'original') {
+    const [exportWidth, exportHeight] = exportSize(project.format, resources.photo.width, resources.photo.height)
+    const fit = Math.min(w / exportWidth, h / exportHeight)
+    composition = { width: exportWidth * fit, height: exportHeight * fit }
+  }
+  if (compactEditor.matches && zoomButton.getAttribute('aria-pressed') === 'true') {
+    composition.width *= 1.4
+    composition.height *= 1.4
+  }
+  frame = paintScene(canvas, project, previewMap, artImages, active.neckline, composition)
   drawGuides()
+}
+
+function traceRect(ctx, rect, mapPoint, color) {
+  if (!rect) return
+  const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) =>
+    mapPoint(rect.x + x * rect.w / 2, rect.y + y * rect.h / 2))
+  traceGuide(ctx, corners, color)
+}
+
+function traceGuide(ctx, [first, ...rest], color) {
+  ctx.beginPath()
+  ctx.moveTo(first.x, first.y)
+  for (const point of rest) ctx.lineTo(point.x, point.y)
+  ctx.closePath()
+  ctx.setLineDash([5, 4])
+  ctx.strokeStyle = '#1C1A18'
+  ctx.lineWidth = 3.6
+  ctx.stroke()
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1.6
+  ctx.stroke()
+  ctx.setLineDash([])
 }
 
 function drawGuides() {
   if (!frame || $('mockup-editor').hidden) return
   const ctx = overlay.getContext('2d')
   ctx.clearRect(0, 0, overlay.width, overlay.height)
-  const layer = guides && !zoneMode && selectedLayer(project)
+  const selected = selectedLayer(project)
+  const layer = guides && !areaMode && selected
   handleBox.hidden = !layer
   if (!layer) placeToolbar(null)
-  if (!guides && !zoneMode) return
-  if (zoneMode || project.layers.length === 0) {
-    const zone = project.zone
-    ctx.strokeStyle = '#ff9d85'
-    ctx.lineWidth = 1.6
-    ctx.setLineDash([5, 4])
-    ctx.strokeRect(frame.x + (zone.x - zone.w / 2) * frame.w, frame.y + (zone.y - zone.h / 2) * frame.h,
-      zone.w * frame.w, zone.h * frame.h)
-    ctx.setLineDash([])
-  }
-  if (!layer) return
+  if (!guides && !areaMode) return
 
-  const form = photoSelection(layer, frame.w, frame.h)
+  const toFrame = (x, y) => ({ x: frame.x + x * frame.w, y: frame.y + y * frame.h })
+  if (areaMode === 'printArea') {
+    const area = areaMode === 'printArea' ? gesture?.rect ?? printAreaOf(project) : printAreaOf(project)
+    traceRect(ctx, area, toFrame, '#FEFCEB')
+  }
+  if (areaMode === 'neckline') {
+    const rect = areaMode === 'neckline' ? gesture?.rect ?? project.neckline : project.neckline
+    if (rect) traceRect(ctx, rect, toFrame, '#FEFCEB')
+    else if (active.neckline) traceGuide(ctx, active.neckline.map(([x, y]) => toFrame(x, y)), '#FEFCEB')
+  }
+  if (!layer && !(areaMode === 'crop' && selected)) return
+
+  const form = photoSelection(selected, frame.w, frame.h)
   const center = { x: frame.x + form.x, y: frame.y + form.y }
   const projected = (x, y) => {
     const v = form.vector(x, y)
     return { x: center.x + v.x, y: center.y + v.y }
   }
+  const crop = areaMode === 'crop' ? gesture?.rect ?? selected.crop : selected.crop
+  const cropPoint = (x, y) => projected(x * 2 - 1, y * 2 - 1)
+  if (areaMode === 'crop') traceRect(ctx, { x: .5, y: .5, w: 1, h: 1 }, cropPoint, '#FEFCEB')
+  traceRect(ctx, crop, cropPoint, '#D74A21')
+  if (!layer) return
+
   const place = (element, pixel) => {
     element.style.left = pixel.x / overlay.width * 100 + '%'
     element.style.top = pixel.y / overlay.height * 100 + '%'
@@ -285,7 +402,7 @@ function drawGuides() {
   const top = projected(0, -1)
   const normal = form.vector(0, -1)
   const length = Math.hypot(normal.x, normal.y)
-  const offset = 24 * overlay.width / Math.max(1, overlay.clientWidth)
+  const offset = (compactEditor.matches ? 36 : 24) * overlay.width / Math.max(1, overlay.clientWidth)
   const rotation = { x: top.x + normal.x * offset / length, y: top.y + normal.y * offset / length }
   place(rotateHandle, rotation)
   place(moveHandle, center)
@@ -295,34 +412,32 @@ function drawGuides() {
   ctx.closePath()
   ctx.moveTo(top.x, top.y)
   ctx.lineTo(rotation.x, rotation.y)
-  ctx.strokeStyle = '#ff9d85'
+  ctx.strokeStyle = '#1C1A18'
+  ctx.lineWidth = 3.2
+  ctx.stroke()
+  ctx.strokeStyle = '#FEFCEB'
   ctx.lineWidth = 1.4
   ctx.stroke()
 
   const viewport = stage.getBoundingClientRect()
   const photo = overlay.getBoundingClientRect()
+  const stageY = y => photo.top - viewport.top + y * photo.height / overlay.height
+  const handleYs = [rotation.y, ...points.map(point => point.y)]
   placeToolbar({
     x: photo.left - viewport.left + Math.max(...points.map(point => point.x)) * photo.width / overlay.width,
-    y: photo.top - viewport.top + Math.min(rotation.y, ...points.map(point => point.y)) * photo.height / overlay.height
+    y: stageY(Math.min(...handleYs)),
+    bottom: stageY(Math.max(...handleYs))
   })
 }
-new ResizeObserver(() => drawGuides()).observe(stack)
+new ResizeObserver(() => preview()).observe(stack)
+zoomButton.addEventListener('click', () => {
+  if (gesture) return
+  zoomButton.setAttribute('aria-pressed', String(zoomButton.getAttribute('aria-pressed') !== 'true'))
+  preview()
+})
 
-function controls(panel) {
-  for (const button of document.querySelectorAll('[data-panel]')) {
-    const current = button.dataset.panel === panel
-    button.setAttribute('aria-pressed', String(current))
-    $('panel-' + button.dataset.panel).hidden = !current
-  }
-}
-
-for (const button of document.querySelectorAll('[data-panel]')) {
-  button.addEventListener('click', () => {
-    zoneMode = false
-    overlay.classList.remove('zone-mode')
-    controls(button.dataset.panel)
-    drawGuides()
-  })
+for (const heading of document.querySelectorAll('.settings > h2')) {
+  heading.addEventListener('click', () => heading.focus())
 }
 
 function getPoint(event) {
@@ -334,6 +449,8 @@ function getPoint(event) {
 }
 
 function selectLayer(layer) {
+  finishAdjustment()
+  if (areaMode) setAreaMode(null)
   project = { ...project, selected: layer?.id ?? null }
   if (layer && !guides) {
     guides = true
@@ -348,12 +465,11 @@ stack.addEventListener('pointerdown', event => {
   const point = getPoint(event)
   const handle = event.target.closest('.handle')
   let transform
-  if (!zoneMode) {
+  if (!areaMode) {
     const layer = handle ? selectedLayer(project) : project.layers.slice().reverse()
       .find(item => hitsLayer(item, point.x / frame.w, point.y / frame.h, frame.w, frame.h))
     if (!handle) selectLayer(layer)
     if (!layer) return
-    controls('layers')
     const kind = handle?.dataset.gesture ?? 'move'
     const corner = kind === 'scale' ? { x: Number(handle.dataset.x), y: Number(handle.dataset.y) } : null
     transform = photoGesture(layer, kind, point, frame.w, frame.h, corner)
@@ -365,17 +481,21 @@ stack.addEventListener('pointerdown', event => {
 })
 
 stage.addEventListener('pointerdown', event => {
-  if (event.target === stage && event.button === 0 && project && !zoneMode) selectLayer(null)
+  if (event.target === stage && event.button === 0 && project && !areaMode) selectLayer(null)
 })
 
 stack.addEventListener('pointermove', event => {
   if (event.pointerId !== gesture?.id) return
   const point = getPoint(event)
   const origin = gesture.point
-  if (zoneMode) {
-    const x0 = clamp(origin.x / frame.w, 0, 1), y0 = clamp(origin.y / frame.h, 0, 1)
-    const x1 = clamp(point.x / frame.w, 0, 1), y1 = clamp(point.y / frame.h, 0, 1)
-    project = { ...project, zone: { x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) } }
+  if (areaMode) {
+    const selected = selectedLayer(project)
+    const local = p => areaMode === 'crop' ?
+      layerPoint(selected, p.x / frame.w, p.y / frame.h, frame.w, frame.h) :
+      { x: p.x / frame.w, y: p.y / frame.h }
+    gesture.rect = rectBetween(local(origin), local(point))
+    drawGuides()
+    return
   } else {
     const change = gesture.transform(point, event.shiftKey)
     if (!change) return
@@ -387,15 +507,28 @@ stack.addEventListener('pointermove', event => {
 
 function finishGesture(event, cancel) {
   if (event.pointerId !== gesture?.id) return
-  const before = gesture.before
+  const { before, rect } = gesture
   gesture = undefined
-  if (cancel || (zoneMode && (project.zone.w < .02 || project.zone.h < .02))) project = before
-  if (project !== before) history.record(before)
-  if (!cancel && zoneMode) {
-    zoneMode = false
-    overlay.classList.remove('zone-mode')
-    status(project === before ? 'A área é pequena demais.' : 'Área estampável atualizada.', project === before)
+  if (areaMode) {
+    if (cancel) {
+      setAreaMode(null)
+      return
+    }
+    if (!rect || rect.w < .02 || rect.h < .02) {
+      status('Arraste para marcar uma área maior.', true)
+      drawGuides()
+      return
+    }
+    const mode = areaMode
+    setAreaMode(null)
+    if (mode === 'crop') commit(editLayer(project, { crop: rect }))
+    if (mode === 'printArea') commit({ ...project, printArea: rect })
+    if (mode === 'neckline') commit({ ...project, neckline: rect, protectNeckline: true })
+    status(mode === 'crop' ? 'Estampa recortada.' : 'Área estampável atualizada.')
+    return
   }
+  if (cancel) project = before
+  else if (project !== before) history.record(before)
   preview(true)
 }
 
@@ -422,11 +555,56 @@ for (const handle of handles) {
   })
 }
 
-$('draw-zone').addEventListener('click', () => {
-  zoneMode = !zoneMode
-  overlay.classList.toggle('zone-mode', zoneMode)
-  status(zoneMode ? 'Arraste na foto para marcar a área estampável.' : '')
+const areaInstructions = {
+  printArea: 'Arraste na foto para marcar a área onde as estampas podem aparecer.',
+  neckline: 'Arraste na foto para marcar a gola e o interior que quer proteger.',
+  crop: 'Arraste sobre a estampa para selecionar a parte que quer manter.'
+}
+
+function setAreaMode(mode) {
+  if (areaMode && gesture) gesture = undefined
+  areaMode = mode
+  overlay.classList.toggle('zone-mode', Boolean(mode))
+  $('cancel-area').hidden = !mode
+  if (mode) {
+    if (compactEditor.matches) setInspectorOpen(false)
+    status(areaInstructions[mode])
+  }
   drawGuides()
+}
+
+$('cancel-area').addEventListener('click', () => {
+  setAreaMode(null)
+  status('')
+})
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape' || event.defaultPrevented || $('mockup-editor').hidden || event.target.closest('input, textarea, select, dialog[open], [contenteditable]')) return
+  if (areaMode) $('cancel-area').click()
+  else if (project && selectedLayer(project)) selectLayer(null)
+})
+$('draw-zone').addEventListener('click', () => setAreaMode('printArea'))
+$('reset-zone').addEventListener('click', () => {
+  setAreaMode(null)
+  commit({ ...project, printArea: null })
+  status('A estampa pode cobrir a peça inteira.')
+})
+$('draw-neckline').addEventListener('click', () => setAreaMode('neckline'))
+$('protect-neckline').addEventListener('change', event => {
+  const enabled = event.target.checked
+  if (enabled && !active.neckline && !project.neckline) {
+    event.target.checked = false
+    setAreaMode('neckline')
+    return
+  }
+  setAreaMode(null)
+  commit({ ...project, protectNeckline: enabled })
+  status(enabled ? 'Gola e interior protegidos.' : 'Proteção da gola removida.')
+})
+$('crop-art').addEventListener('click', () => setAreaMode('crop'))
+$('reset-crop').addEventListener('click', () => {
+  setAreaMode(null)
+  commit(editLayer(project, { crop: null }))
+  status('Recorte removido.')
 })
 $('toggle-guides').addEventListener('click', () => {
   guides = !guides
@@ -435,57 +613,50 @@ $('toggle-guides').addEventListener('click', () => {
 })
 
 const sliders = [
-  ['layer-size', 'w', true, '%'], ['layer-rotation', 'rotation', true, '°', 1],
-  ['layer-x', 'x', true, '%'], ['layer-y', 'y', true, '%'],
-  ['shadow-intensity', 'intensity', false, '%'], ['shadow-softness', 'softness', false, '%'],
-  ['shadow-x', 'shadowX', false, '%'], ['shadow-y', 'shadowY', false, '%'],
-  ['crop-zoom', 'zoom', false, '%'], ['crop-x', 'cropX', false, '%'], ['crop-y', 'cropY', false, '%']
+  ['shadow-intensity', 'intensity'], ['shadow-softness', 'softness'],
+  ['shadow-x', 'shadowX'], ['shadow-y', 'shadowY'],
+  ['crop-zoom', 'zoom'], ['crop-x', 'cropX'], ['crop-y', 'cropY']
 ]
 
 function updateSliders() {
-  const layer = selectedLayer(project)
-  for (const [id, key, isLayer, unit, multiplier = 100] of sliders) {
-    const value = (isLayer ? layer : project)?.[key]
-    if (value === undefined) continue
+  for (const [id, key] of sliders) {
     const input = $(id)
-    input.value = Math.round(value * multiplier * 10) / 10
-    input.nextElementSibling.value = input.value + unit
+    input.value = Math.round(project[key] * 1000) / 10
+    input.nextElementSibling.value = input.value + '%'
   }
 }
 
-for (const [id, key, isLayer, , multiplier = 100] of sliders) {
+function finishAdjustment() {
+  if (!pending) return
+  history.record(pending)
+  pending = undefined
+  syncUI()
+}
+
+for (const [id, key] of sliders) {
   const input = $(id)
   input.addEventListener('input', () => {
     if (!project) return
     pending ??= project
-    const value = Number(input.value) / multiplier
-    project = isLayer ? editLayer(project, { [key]: value }) : { ...project, [key]: value }
+    project = { ...project, [key]: Number(input.value) / 100 }
     updateSliders()
     preview()
   })
-  const finish = () => {
-    if (!pending) return
-    history.record(pending)
-    pending = undefined
-    syncUI()
-  }
-  input.addEventListener('change', finish)
-  input.addEventListener('blur', finish)
+  input.addEventListener('change', finishAdjustment)
+  input.addEventListener('blur', finishAdjustment)
 }
 
 $('undo').addEventListener('click', () => {
+  finishAdjustment()
+  setAreaMode(null)
   project = history.undo(project)
   preview(true)
 })
 $('redo').addEventListener('click', () => {
+  finishAdjustment()
+  setAreaMode(null)
   project = history.redo(project)
   preview(true)
-})
-document.addEventListener('keydown', event => {
-  if ($('mockup-editor').hidden || !project || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z' ||
-      event.target.matches('input, textarea, select, [contenteditable]')) return
-  event.preventDefault()
-  $(event.shiftKey ? 'redo' : 'undo').click()
 })
 $('duplicate').addEventListener('click', () => {
   if (project.layers.length >= 16) return status('O projeto comporta até 16 camadas.', true)
@@ -493,7 +664,9 @@ $('duplicate').addEventListener('click', () => {
 })
 $('raise').addEventListener('click', () => commit(moveLayer(project, 1)))
 $('lower').addEventListener('click', () => commit(moveLayer(project, -1)))
-$('delete').addEventListener('click', () => commit(deleteLayer(project)))
+$('delete').addEventListener('click', () => {
+  if (project && selectedLayer(project)) commit(deleteLayer(project))
+})
 $('finish').addEventListener('change', event => commit(editLayer(project, { finish: event.target.value })))
 $('finish-all').addEventListener('click', () => {
   const { finish } = selectedLayer(project)
@@ -501,19 +674,37 @@ $('finish-all').addEventListener('click', () => {
 })
 $('format').addEventListener('change', event => commit({ ...project, format: event.target.value }))
 
+const inkPicker = $('svg-ink')
+inkPicker.addEventListener('input', () => {
+  const layer = project && selectedLayer(project)
+  if (layer?.kind !== 'SVG' || layer.ink === inkPicker.value) return
+  pending ??= project
+  project = editLayer(project, { ink: inkPicker.value })
+  preview()
+})
+inkPicker.addEventListener('change', finishAdjustment)
+inkPicker.addEventListener('blur', finishAdjustment)
+$('svg-original').addEventListener('click', () => {
+  if (selectedLayer(project)?.ink) commit(editLayer(project, { ink: undefined }))
+})
+
+async function prepareArtwork(file) {
+  const artwork = await readArtwork(file)
+  const source = await asDataURL(await canvasBlob(artwork.image))
+  artImages.set(source, artwork.image)
+  return { ...artwork, source }
+}
+
+function appendArtwork(doc, { source, name, image, kind }) {
+  return addLayer(doc, source, name, image.width, image.height, resources.photo.width / resources.photo.height, kind)
+}
+
 async function importArts(files) {
   if (!project) throw new Error('Selecione uma foto antes de adicionar a estampa.')
   if (project.layers.length + files.length > 16) throw new Error('O projeto comporta até 16 camadas.')
-  let next = project
-  for (const file of files) {
-    const artwork = await readArtwork(file)
-    if (artwork.kind !== 'PNG') throw new Error('Importe a estampa em PNG transparente.')
-    const source = await asDataURL(await canvasBlob(artwork.image))
-    artImages.set(source, artwork.image)
-    next = addLayer(next, source, artwork.name, artwork.image.width, artwork.image.height, resources.photo.width / resources.photo.height)
-  }
+  let next = { ...project, layers: project.layers.filter(layer => !exampleLayers.has(layer.id)) }
+  for (const file of files) next = appendArtwork(next, await prepareArtwork(file))
   commit(next)
-  controls('layers')
   status(files.length > 1 ? 'Estampas importadas.' : 'Estampa importada.')
 }
 
@@ -556,11 +747,12 @@ $('photo-form').addEventListener('submit', event => {
         zone: { x: .5, y: .5, w: .46, h: .46 }, photo: photo.source, mask, upscaled: photo.upscaled,
         origin: 'Foto local do usuário', usage: 'Uso local', custom: true
       }
-      await openScene(scene, newProject(scene))
+      await openScene(scene)
       scenes.set(scene.id, scene)
       for (const field of ['category', 'view', 'style']) $('filter-' + field).value = ''
       renderCatalog()
       $('photo-dialog').close()
+      $('scene-name').focus({ preventScroll: true })
       $('photo-form').reset()
       status('Foto adicionada à biblioteca local.')
     } catch (error) {
@@ -599,7 +791,7 @@ $('project-file').addEventListener('change', event => {
           !views.includes(customScene.view) || !styles.includes(customScene.style)) {
         throw new Error('A foto incorporada neste projeto é inválida.')
       }
-      scene = { ...customScene, custom: true }
+      scene = { ...customScene, custom: true, neckline: undefined }
       delete saved.customScene
     }
     if (!scene || scene.version !== saved.scene.version) throw new Error('Cena indisponível: ' + saved.scene.id)
@@ -619,12 +811,13 @@ for (const [format, type] of [['png', 'image/png'], ['jpeg', 'image/jpeg']]) {
     if (!project) return
     const snapshot = project
     const images = resources
+    const neckline = active.neckline
     status('Gerando imagem…')
     await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)))
     const [width, height] = exportSize(snapshot.format, images.photo.width, images.photo.height)
     const data = photoMap(images, Math.min(2400, Math.round(Math.max(width, height) * snapshot.zoom)))
     const output = canvasOf(width, height)
-    paintScene(output, snapshot, data, artImages)
+    paintScene(output, snapshot, data, artImages, neckline)
     download(await canvasBlob(output, type, .94), 'doutelab-mockup.' + format)
     status('Imagem exportada em ' + width + ' × ' + height + ' px.')
   }))
@@ -638,11 +831,11 @@ withLock(async () => {
     const transfer = await takeTransfer().catch(() => null)
     if (transfer?.version === 1) {
       const scene = (transfer.side === 'back' && catalog.find(item => item.view === 'Costas')) || catalog[0]
-      await openScene(scene, undefined, undefined, 'replace')
+      await openScene(scene, undefined, undefined, 'replace', false)
       await importArts([new File([transfer.blob], transfer.name, { type: transfer.blob.type })])
     } else {
       setScreen(null, 'replace')
-      status('Estampa indisponível. Escolha uma foto e importe o PNG no editor.', true)
+      status('Estampa indisponível. Escolha uma foto e importe a estampa no editor.', true)
     }
     return
   }
@@ -653,3 +846,19 @@ withLock(async () => {
     status('Abra o arquivo de projeto para recuperar a foto local.')
   }
 })
+
+describeHandleKeys(handles)
+bindShortcuts([
+  ['#open-project', 'Mod+O'], ['#save-project', 'Mod+S'],
+  ['#undo', 'Mod+Z'], ['#redo', 'Mod+Shift+Z', 'Mod+Y'],
+  ['#delete', 'Delete', 'Backspace'], ['#duplicate', 'Mod+D'],
+  ['#raise', 'Alt+ArrowUp'], ['#lower', 'Alt+ArrowDown'],
+  ['#crop-art', 'C'], ['#reset-crop', 'Shift+C'], ['#toggle-guides', 'G'],
+  ['#add-art', 'Mod+I'], ['#add-photo', 'Shift+I'], ['#back-library', 'B'],
+  ['#layers-heading', '1'], ['#scene-heading', '2'], ['#export-heading', '3'],
+  ['#finish', 'F'], ['#finish-all', 'Shift+F'], ['#svg-ink', 'K'], ['#svg-original', 'Shift+R'],
+  ['#format', 'Shift+E'], ['#crop-zoom', 'Z'],
+  ['#draw-neckline', 'N'], ['#protect-neckline', 'Shift+N'],
+  ['#draw-zone', 'A'], ['#reset-zone', 'Shift+A'], ['#cancel-area', 'Escape'],
+  ['#export-png', 'Mod+Shift+E'], ['#export-jpeg', 'Mod+Alt+E']
+])

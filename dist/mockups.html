@@ -2,51 +2,67 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#18191c">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1C1A18">
   <title>doutelab · Mockups</title>
   <link rel="stylesheet" href="./studio.css">
   <link rel="stylesheet" href="./mockups/style.css">
   <script type="module" src="./mockups/app.js"></script>
 </head>
-<body>
+<body class="mockups-page">
   <header class="top">
-    <a class="brand" href="./">doutelab<span></span></a>
+    <a class="brand" href="./">doutelab<span aria-hidden="true"></span></a>
     <nav aria-label="Editores">
       <a href="./">Estúdio 3D</a>
       <a id="mockups-nav" href="./mockups.html" aria-current="page">Mockups</a>
     </nav>
-    <div class="project-actions">
-      <button id="open-project" type="button">Abrir projeto</button>
-      <button id="save-project" type="button" hidden>Salvar projeto</button>
+    <div class="project-actions" role="group" aria-label="Projeto">
+      <button id="open-project" type="button" class="icon-button" aria-label="Abrir projeto" title="Abrir projeto">
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#folder-open"></use></svg>
+        <span>Abrir projeto</span>
+      </button>
+      <button id="save-project" type="button" hidden class="icon-button" aria-label="Salvar projeto" title="Salvar projeto">
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#save"></use></svg>
+        <span>Salvar</span>
+      </button>
       <input id="project-file" type="file" accept=".json,application/json" hidden>
     </div>
   </header>
   <main id="library-home" class="library" aria-labelledby="library-title">
     <div class="library-heading">
-      <div><h1 id="library-title">Mockups</h1><p>Escolha uma foto para aplicar sua estampa.</p></div>
-      <button class="photo-button" id="add-photo" type="button">+ Adicionar foto</button>
+      <h1 id="library-title" tabindex="-1">Mockups</h1>
+      <button id="add-photo" type="button" class="button-with-icon primary">
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#image-plus"></use></svg>
+        Adicionar foto
+      </button>
     </div>
     <div class="library-tools">
-      <div class="filters">
-        <select id="filter-category" aria-label="Filtrar tipo de peça"></select>
-        <select id="filter-view" aria-label="Filtrar vista"></select>
-        <select id="filter-style" aria-label="Filtrar apresentação"></select>
+      <div class="filters" role="group" aria-label="Filtrar mockups">
+        <label for="filter-category">Peça<select id="filter-category"></select></label>
+        <label for="filter-view">Vista<select id="filter-view"></select></label>
+        <label for="filter-style">Apresentação<select id="filter-style"></select></label>
       </div>
       <p id="library-status" role="status"></p>
     </div>
     <div id="catalog" class="catalog"></div>
   </main>
-  <main id="mockup-editor" class="mockup-workspace" hidden>
-    <section class="workbench" aria-labelledby="scene-name">
-      <div class="workbench-bar">
+  <main id="mockup-editor" class="editor-workspace mockup-workspace" aria-labelledby="scene-name" hidden>
+    <section class="workbench work-panel" aria-label="Visualização do mockup">
+      <div class="workbench-bar work-bar">
         <div class="workbench-title">
-          <button id="back-library" type="button">Biblioteca</button>
-          <div><h2 id="scene-name">Mockups</h2><p id="scene-description"></p></div>
+          <button id="back-library" type="button" class="button-with-icon" aria-label="Biblioteca">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#grid-2x2"></use></svg>
+            <span>Biblioteca</span>
+          </button>
+          <div><h1 id="scene-name" tabindex="-1">Mockups</h1><p id="scene-description"></p></div>
         </div>
-        <div class="history">
-          <button id="undo" type="button" disabled>Desfazer</button>
-          <button id="redo" type="button" disabled>Refazer</button>
+        <div class="history" role="group" aria-label="Histórico">
+          <button id="undo" type="button" disabled class="icon-button" aria-label="Desfazer" title="Desfazer">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#undo-2"></use></svg>
+          </button>
+          <button id="redo" type="button" disabled class="icon-button" aria-label="Refazer" title="Refazer">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#redo-2"></use></svg>
+          </button>
         </div>
       </div>
       <div class="stage" id="drop-stage">
@@ -63,74 +79,120 @@
           </div>
         </div>
         <div id="art-tools" class="art-tools" role="group" aria-label="Ações da estampa" hidden>
-          <button class="tool-grip" type="button" aria-label="Mover menu da estampa" title="Arraste para mover o menu">⠿</button>
+          <button type="button" class="icon-button tool-grip" aria-label="Mover menu da estampa" title="Mover menu da estampa">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#grip-vertical"></use></svg>
+          </button>
           <select id="finish" aria-label="Acabamento da estampa"></select>
-          <button type="button" id="duplicate">Duplicar</button>
-          <button type="button" id="raise" title="Trazer uma camada para frente">Frente</button>
-          <button type="button" id="lower" title="Mandar uma camada para trás">Trás</button>
-          <button type="button" id="delete" class="delete">Excluir</button>
+          <button type="button" id="duplicate" class="icon-button" aria-label="Duplicar estampa" title="Duplicar estampa">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#copy"></use></svg>
+          </button>
+          <button type="button" id="raise" class="icon-button" aria-label="Subir uma camada" title="Subir uma camada">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#layer-arrow-up"></use></svg>
+          </button>
+          <button type="button" id="lower" class="icon-button" aria-label="Descer uma camada" title="Descer uma camada">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#layer-arrow-down"></use></svg>
+          </button>
+          <button type="button" id="crop-art" class="icon-button" aria-label="Recortar estampa" title="Recortar estampa">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#crop"></use></svg>
+          </button>
+          <button type="button" id="delete" class="icon-button delete" aria-label="Excluir estampa" title="Excluir estampa">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#trash"></use></svg>
+          </button>
         </div>
       </div>
-      <div class="workbench-footer">
-        <p id="status" role="status"></p>
-        <button id="toggle-guides" type="button" aria-pressed="true">Guias</button>
+      <div id="art-tools-dock" class="art-tools-dock compact-control">
+        <button class="quick-import button-with-icon" type="button">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#upload"></use></svg>
+          Importar estampa
+        </button>
+      </div>
+      <div class="workbench-footer work-footer">
+        <div class="edit-status">
+          <p id="status" role="status"></p>
+          <button id="cancel-area" type="button" aria-label="Cancelar marcação" hidden>Cancelar</button>
+        </div>
+        <button id="toggle-guides" type="button" aria-pressed="true" class="button-with-icon">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#scan"></use></svg>
+          Guias
+        </button>
+        <button id="preview-zoom" class="compact-control scene-zoom" type="button" aria-pressed="false">Ampliar</button>
+        <button class="compact-control inspector-toggle" type="button" aria-controls="editor-inspector" aria-expanded="false">Ajustes</button>
       </div>
     </section>
-    <aside class="inspector" aria-label="Ferramentas de mockup">
-      <div class="tabs" role="group" aria-label="Ferramentas">
-        <button type="button" data-panel="layers" aria-pressed="true">Camadas</button>
-        <button type="button" data-panel="scene" aria-pressed="false">Cena</button>
-        <button type="button" data-panel="export" aria-pressed="false">Exportar</button>
-      </div>
-      <section id="panel-layers" class="settings">
-        <button id="add-art" class="primary" type="button">+ Importar estampa</button>
-        <input id="art-file" type="file" accept=".png,image/png" hidden multiple>
+    <aside id="editor-inspector" class="inspector" aria-label="Ferramentas de mockup">
+      <section id="panel-layers" class="settings" aria-labelledby="layers-heading">
+        <h2 id="layers-heading" tabindex="-1">Camadas</h2>
+        <button id="add-art" type="button" class="button-with-icon primary">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#upload"></use></svg>
+          Importar estampa
+        </button>
+        <input id="art-file" type="file" accept=".png,.svg,image/png,image/svg+xml" hidden multiple>
         <ul id="layer-list" aria-label="Camadas da frente para trás"></ul>
-        <p id="empty-layers" class="muted">Importe uma estampa PNG ou arraste o arquivo sobre a foto.</p>
+        <p id="empty-layers" class="muted">Arraste um PNG ou SVG para a foto.</p>
         <div id="layer-editor" hidden>
+          <div class="control-group svg-color" id="svg-color" hidden>
+            <label for="svg-ink">Cor do SVG</label>
+            <input type="color" id="svg-ink" title="Cor do SVG" value="#ff665a">
+            <button type="button" id="svg-original" aria-pressed="true">Original</button>
+          </div>
           <div class="control-group">
             <button id="finish-all" type="button">Aplicar acabamento a todas</button>
-          </div>
-          <div class="control-group sliders">
-            <label>Tamanho<input id="layer-size" type="range" min="1" max="150" step="1"><output></output></label>
-            <label>Rotação<input id="layer-rotation" type="range" min="-180" max="180" step="1"><output></output></label>
-            <label>Posição X<input id="layer-x" type="range" min="0" max="100" step=".5"><output></output></label>
-            <label>Posição Y<input id="layer-y" type="range" min="0" max="100" step=".5"><output></output></label>
+            <button id="reset-crop" type="button" hidden>Remover recorte da estampa</button>
           </div>
         </div>
       </section>
-      <section id="panel-scene" class="settings" hidden>
+      <section id="panel-scene" class="settings" aria-labelledby="scene-heading">
+        <h2 id="scene-heading" tabindex="-1">Cena</h2>
         <div class="control-group"><h3>Iluminação</h3><div class="presets" id="light-options"></div></div>
-        <div class="control-group"><h3>Sombras</h3><div class="presets" id="shadow-options"></div></div>
-        <div class="control-group sliders" id="shadow-adjustments" hidden>
-          <label>Intensidade<input id="shadow-intensity" type="range" min="0" max="100"><output></output></label>
-          <label>Suavidade<input id="shadow-softness" type="range" min="0" max="100"><output></output></label>
-          <label>Deslocamento X<input id="shadow-x" type="range" min="-50" max="50"><output></output></label>
-          <label>Deslocamento Y<input id="shadow-y" type="range" min="-50" max="50"><output></output></label>
-        </div>
-        <details class="control-group">
-          <summary>Área estampável</summary>
-          <button type="button" id="draw-zone">Marcar área na foto</button>
-          <p class="muted">Arraste um retângulo delimitando a área da estampa.</p>
-        </details>
-      </section>
-      <section id="panel-export" class="settings" hidden>
         <div class="control-group">
-          <label>Formato da composição<select id="format"></select></label>
+          <h3>Sombras</h3>
+          <div class="presets" id="shadow-options"></div>
+          <details id="shadow-adjustments" hidden>
+            <summary>Ajustes da sombra</summary>
+            <div class="sliders">
+              <label>Intensidade<input id="shadow-intensity" type="range" min="0" max="100"><output></output></label>
+              <label>Suavidade<input id="shadow-softness" type="range" min="0" max="100"><output></output></label>
+              <label>Deslocamento X<input id="shadow-x" type="range" min="-50" max="50"><output></output></label>
+              <label>Deslocamento Y<input id="shadow-y" type="range" min="-50" max="50"><output></output></label>
+            </div>
+          </details>
+        </div>
+        <div class="control-group print-controls">
+          <h3>Área estampável</h3>
+          <p id="print-area-status" class="muted">Peça inteira</p>
+          <label class="check-control"><input id="protect-neckline" title="Proteger gola e interior da peça" type="checkbox"> Proteger gola e interior da peça</label>
+          <button type="button" id="draw-neckline" hidden>Marcar gola na foto</button>
+          <button type="button" id="draw-zone">Limitar área na foto</button>
+          <button type="button" id="reset-zone" hidden>Usar peça inteira</button>
+        </div>
+      </section>
+      <section id="panel-export" class="settings" aria-labelledby="export-heading">
+        <h2 id="export-heading" tabindex="-1">Exportar</h2>
+        <div class="control-group">
+          <label>Formato da composição<select id="format" title="Formato da composição"></select></label>
           <p id="export-dimensions" class="muted"></p>
         </div>
         <div class="control-group sliders">
-          <label>Zoom<input id="crop-zoom" type="range" min="100" max="200"><output></output></label>
+          <label>Zoom<input id="crop-zoom" title="Zoom do enquadramento" type="range" min="100" max="200"><output></output></label>
           <label>Enquadramento X<input id="crop-x" type="range" min="-100" max="100"><output></output></label>
           <label>Enquadramento Y<input id="crop-y" type="range" min="-100" max="100"><output></output></label>
         </div>
         <div class="export-actions">
-          <button class="primary" id="export-png" type="button">Baixar PNG</button>
-          <button id="export-jpeg" type="button">Baixar JPEG</button>
+          <button id="export-png" type="button" class="button-with-icon" aria-label="Baixar PNG">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#download"></use></svg>
+            PNG
+          </button>
+          <button id="export-jpeg" type="button" class="button-with-icon" aria-label="Baixar JPEG">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#download"></use></svg>
+            JPEG
+          </button>
         </div>
       </section>
     </aside>
   </main>
+  <template id="layer-delete-template">
+    <button type="button" class="icon-button layer-delete" title="Excluir estampa"><svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#trash"></use></svg></button>
+  </template>
   <dialog id="photo-dialog" aria-labelledby="photo-title">
     <form id="photo-form">
       <h2 id="photo-title">Adicionar foto</h2>

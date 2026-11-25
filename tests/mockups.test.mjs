@@ -23,6 +23,13 @@ test('preserves aspect ratio when upscaling and provides both Full HD orientatio
   assert.deepEqual(exportSize('original', 1800, 1200), [1800, 1200])
 })
 
+test('a new mockup starts with the diffuse window shadow settings', () => {
+  const { shadow, intensity, softness, shadowX, shadowY } = newProject(reference)
+  assert.deepEqual({ shadow, intensity, softness, shadowX, shadowY }, {
+    shadow: 'diffuse', intensity: .6, softness: 1, shadowX: 0, shadowY: 0
+  })
+})
+
 test('layer order, finish, duplicate, delete and history survive serializing the project', () => {
   const first = addLayer(newProject(reference), png, 'Front', 16, 8, 1)
   const original = selectedLayer(first)
@@ -109,10 +116,51 @@ test('direct PNG uses the artwork pixels without cloth warping or ink treatment'
   const inkContext = ink.getContext('2d')
   inkContext.fillStyle = '#22a8ed'
   inkContext.fillRect(0, 0, 8, 16)
-  const project = addLayer(newProject(reference), png, 'Direct', 16, 16, 1)
+  const project = addLayer({ ...newProject(reference), shadow: 'none' }, png, 'Direct', 16, 16, 1)
   const stage = createCanvas(width, height)
   paintScene(stage, project, map, new Map([[png, ink]]))
   const ctx = stage.getContext('2d')
   assert.deepEqual([...ctx.getImageData(35, 40, 1, 1).data], [34, 168, 237, 255])
   assert.deepEqual([...ctx.getImageData(46, 40, 1, 1).data], [...cloth.getImageData(46, 40, 1, 1).data])
+})
+
+test('full fabric, legacy area, collar protection and art crop render independently', async () => {
+  const size = 100
+  const garment = createCanvas(size, size)
+  const cloth = garment.getContext('2d')
+  cloth.fillStyle = '#1b1b1b'
+  cloth.fillRect(15, 10, 70, 80)
+  const map = preparePhoto(garment, null, size, size)
+  map.concrete = await loadImage(new URL('../dist/mockups/assets/concrete-202l.webp', import.meta.url))
+  const ink = createCanvas(size, size)
+  ink.getContext('2d').fillStyle = '#ff0000'
+  ink.getContext('2d').fillRect(0, 0, size, size)
+  const artwork = new Map([[png, ink]])
+  const stage = createCanvas(size, size)
+  const doc = editLayer(addLayer({ ...newProject(reference), shadow: 'none' }, png, 'Full', size, size, 1), { w: 1 })
+  const render = (overrides = {}, neckline) => paintScene(stage, { ...doc, ...overrides }, map, artwork, neckline)
+  const rgb = (x, y) => [...stage.getContext('2d').getImageData(x, y, 1, 1).data.slice(0, 3)]
+  const inkRGB = [255, 0, 0]
+  const clothRGB = [27, 27, 27]
+  render()
+  assert.deepEqual(rgb(18, 70), inkRGB)
+  assert.deepEqual(rgb(50, 15), inkRGB)
+  assert.ok(rgb(2, 45).every(channel => channel >= 182 && channel <= 242))
+  assert.ok(new Set(Array.from({ length: 12 }, (_, x) => rgb(x, 45).join(','))).size > 1)
+  render({ printArea: undefined })
+  assert.deepEqual(rgb(18, 70), clothRGB)
+  render({ printArea: { x: .5, y: .5, w: .4, h: .4 } })
+  assert.deepEqual(rgb(50, 50), inkRGB)
+  assert.deepEqual(rgb(25, 50), clothRGB)
+  render({ protectNeckline: true }, [[.4, .1], [.6, .1], [.6, .2], [.4, .2]])
+  assert.deepEqual(rgb(50, 15), clothRGB)
+  assert.deepEqual(rgb(65, 15), inkRGB)
+  render({ protectNeckline: true, neckline: { x: .72, y: .28, w: .1, h: .1 } })
+  assert.deepEqual(rgb(72, 28), clothRGB)
+  const cropped = editLayer(doc, { crop: { x: .25, y: .5, w: .5, h: 1 }, rotation: 90 })
+  render(cropped)
+  assert.deepEqual(rgb(64, 30), inkRGB)
+  assert.deepEqual(rgb(64, 70), clothRGB)
+  assert.deepEqual(validateProject(JSON.parse(JSON.stringify(cropped))), cropped)
+  assert.throws(() => validateProject({ ...doc, printArea: { x: .5, y: .5, w: 0, h: .4 } }), /inválido/)
 })

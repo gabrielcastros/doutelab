@@ -2,8 +2,8 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#18191c">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1C1A18">
   <meta name="description" content="Posicione, dimensione e gire estampas PNG ou SVG em camisetas 3D.">
   <title>doutelab · Estúdio 3D</title>
   <link rel="stylesheet" href="./studio.css">
@@ -11,25 +11,36 @@
   <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
   <script type="module" src="./app.js"></script>
 </head>
-<body>
+<body class="studio-page">
   <header class="top">
-    <a class="brand" href="./">doutelab<span></span></a>
+    <a class="brand" href="./">doutelab<span aria-hidden="true"></span></a>
     <nav aria-label="Editores">
       <a href="./" aria-current="page">Estúdio 3D</a>
       <a href="./mockups.html">Mockups</a>
     </nav>
   </header>
-  <main class="workspace" aria-label="Estúdio 3D">
-    <section class="viewer" aria-label="Visualização da camiseta">
-      <div class="viewer-bar">
-        <div class="segments" role="group" aria-label="Visualização da camiseta">
-          <button type="button" data-view="front" aria-pressed="true">Frente</button>
-          <button type="button" data-view="back" aria-pressed="false">Costas</button>
-          <button type="button" data-view="quarter" aria-pressed="false" aria-label="Três quartos" title="Vista de três quartos">¾</button>
-        </div>
-        <div class="viewer-actions">
-          <button id="undo" class="tool-button" title="Desfazer o último ajuste" type="button" disabled>Desfazer</button>
-          <button id="preview" class="tool-button" aria-pressed="false" title="Ocultar as alças e inspecionar a estampa" type="button">Prévia</button>
+  <main class="editor-workspace workspace" aria-labelledby="studio-title">
+    <section class="viewer work-panel" aria-label="Visualização da camiseta">
+      <div class="viewer-bar work-bar">
+        <h1 id="studio-title">Estúdio 3D</h1>
+        <div class="viewer-controls">
+          <div class="segments" role="group" aria-label="Visualização da camiseta">
+            <button type="button" data-view="front" aria-pressed="true">Frente</button>
+            <button type="button" data-view="back" aria-pressed="false">Costas</button>
+            <button type="button" data-view="quarter" aria-pressed="false" aria-label="Três quartos" title="Vista de três quartos">¾</button>
+          </div>
+          <div class="viewer-actions" role="group" aria-label="Histórico e prévia">
+            <button id="undo" type="button" disabled class="icon-button tool-button" aria-label="Desfazer" title="Desfazer">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#undo-2"></use></svg>
+            </button>
+            <button id="redo" type="button" disabled class="icon-button tool-button" aria-label="Refazer" title="Refazer">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#redo-2"></use></svg>
+            </button>
+            <button id="preview" class="tool-button button-with-icon" aria-pressed="false" aria-label="Prévia" title="Ocultar as alças e inspecionar a estampa" type="button">
+              <svg class="icon compact-control" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#scan"></use></svg>
+              <span id="preview-label">Prévia</span>
+            </button>
+          </div>
         </div>
       </div>
       <div class="viewport">
@@ -44,34 +55,47 @@
             <button type="button" class="handle move" data-gesture="move" aria-label="Mover estampa" title="Arraste a estampa para mover"></button>
           </div>
           <div id="art-tools" class="art-tools" role="group" aria-label="Ações da estampa" hidden>
-            <button class="tool-grip" type="button" aria-label="Mover menu da estampa" title="Arraste para mover o menu">⠿</button>
-            <button id="flip" type="button" aria-pressed="false">Espelhar</button>
+            <button type="button" class="icon-button tool-grip" aria-label="Mover menu da estampa" title="Mover menu da estampa">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#grip-vertical"></use></svg>
+            </button>
+            <button id="flip" type="button" aria-pressed="false" class="icon-button" aria-label="Espelhar estampa" title="Espelhar estampa">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#carets-to-axis-dashed-vertical"></use></svg>
+            </button>
             <button id="reset-print" type="button">Redefinir</button>
-            <button id="remove-art" class="delete" type="button">Excluir</button>
+            <button id="remove-art" type="button" class="icon-button delete" aria-label="Excluir estampa" title="Excluir estampa">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#trash"></use></svg>
+            </button>
             <button id="send-to-mockups" type="button">Criar mockup</button>
           </div>
         </div>
         <p id="graphics-error" class="graphics-error" role="alert" hidden></p>
       </div>
-      <div class="viewer-footer">
+      <div id="art-tools-dock" class="art-tools-dock compact-control">
+        <button class="quick-import button-with-icon" type="button">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#upload"></use></svg>
+          Importar estampa
+        </button>
+      </div>
+      <div class="viewer-footer work-footer">
         <p id="hint">Arraste a arte pra mover, os cantos pra ampliar e a alça redonda pra girar.</p>
         <p id="transform-status"></p>
+        <button id="preview-zoom" class="compact-control scene-zoom" type="button" aria-pressed="false">Ampliar</button>
+        <button class="compact-control inspector-toggle" type="button" aria-controls="editor-inspector" aria-expanded="false">Ajustes</button>
       </div>
     </section>
 
-    <aside class="inspector" aria-label="Propriedades">
+    <aside id="editor-inspector" class="inspector" aria-label="Propriedades">
       <h2 class="inspector-title">Propriedades</h2>
       <section class="panel" aria-labelledby="garment-title">
         <h3 id="garment-title">Camiseta</h3>
-        <label class="model-field" for="model"><span>Modelo</span>
-          <span class="select-wrap"><select id="model">
-          </select></span>
+        <label class="model-field" for="model">Modelo
+          <select id="model" title="Modelo da camiseta"></select>
         </label>
         <div class="fabric-field">
           <span id="color-label">Tecido</span>
           <div class="colors" role="group" aria-labelledby="color-label">
             <div id="fabric-swatches" class="colors"></div>
-            <label class="custom-color" title="Escolher outra cor"><span aria-hidden="true">+</span><input id="color" type="color" value="#dedbd2" aria-label="Escolher outra cor de tecido"></label>
+            <label class="custom-color" title="Escolher outra cor"><span aria-hidden="true">+</span><input id="color" title="Cor do tecido" type="color" value="#252528" aria-label="Escolher outra cor de tecido"></label>
           </div>
         </div>
         <p class="fabric-reference"><span id="fabric-name"></span> <a id="fabric-source" target="_blank" rel="noopener">Ver na Zimm</a></p>
@@ -82,12 +106,14 @@
         </div>
         <label id="dropzone" class="dropzone">
           <input id="art-file" type="file" accept=".png,.svg,image/png,image/svg+xml" aria-label="Escolher arquivo PNG ou SVG">
-          <span aria-hidden="true" class="upload-symbol">+</span><strong id="upload-label">Importar PNG ou SVG</strong>
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#upload"></use></svg>
+          <strong id="upload-label">Importar PNG ou SVG</strong>
         </label>
         <p id="file-error" class="file-error" role="alert" hidden></p>
         <div id="file-card" class="file-card" hidden>
           <img id="art-thumb" alt="" width="34" height="34">
           <span class="file-info"><span id="file-name" aria-live="polite"></span><small id="file-kind"></small></span>
+          <button id="remove-art-card" type="button" class="icon-button layer-delete" aria-label="Excluir estampa" title="Excluir estampa"><svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#trash"></use></svg></button>
         </div>
         <div id="art-properties" class="art-properties" hidden>
           <div id="svg-properties" class="property-row" hidden>
@@ -99,14 +125,17 @@
           </div>
           <div class="property-row opacity-row">
             <label for="opacity">Opacidade</label>
-            <input id="opacity" type="range" value="100" min="0" max="100">
+            <input id="opacity" title="Opacidade da estampa" type="range" value="100" min="0" max="100">
             <output id="opacity-value" for="opacity">100%</output>
           </div>
         </div>
       </section>
       <section class="panel export-panel" aria-labelledby="export-title">
         <h3 id="export-title">Baixar mockup</h3>
-        <button class="tool-button export-primary" type="button" data-export="png" disabled>PNG da vista atual</button>
+        <button class="tool-button primary export-primary button-with-icon" type="button" data-export="png" disabled>
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="./vendor/lucide.svg#download"></use></svg>
+          PNG da vista atual
+        </button>
         <div class="export-formats">
           <button class="tool-button" type="button" data-export="gif" title="Giro no eixo X em 2,8 s" disabled>GIF · 2,8 s</button>
           <button class="tool-button" type="button" data-export="zip" title="Cinco ângulos na mesma inclinação" disabled>ZIP · 5 PNGs</button>

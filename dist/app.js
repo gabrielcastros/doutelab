@@ -1,25 +1,31 @@
+import { bindShortcuts, describeHandleKeys } from './shortcuts.js'
 import * as THREE from 'three'
 import { zimmCatalog } from './catalog.js'
 import { OrbitControls } from './vendor/OrbitControls.js'
 import { makeClothMaterial, makeGarment, printArea } from './garment.js'
 import { createStudioRenderer, createStudioScene, makePrintTexture } from './studio.js'
-import { readArtwork, thumbnail, displayArtwork } from './artwork.js'
+import { readArtwork, thumbnail, displayArtwork, starterArtworkFile } from './artwork.js'
 import { saveTransfer } from './mockup-transfer.js'
 import { artworkLayout, createArtTransform, transformDefaults } from './transform.js'
+import { bindInspector, compactEditor } from './editor-layout.js'
 
 const $ = id => document.getElementById(id)
 const viewButtons = [...document.querySelectorAll('[data-view]')]
 const models = $('model')
+const workspace = document.querySelector('.editor-workspace')
+const setInspectorOpen = bindInspector(workspace)
 for (const [index, item] of zimmCatalog.entries()) {
   models.add(new Option(item.label, String(index)))
 }
-models.selectedIndex = zimmCatalog.findIndex(item => item.label === 'Oversized')
-const newSide = () => ({ ...transformDefaults, image: null, kind: '', name: '', thumb: '', revision: 0, history: [] })
+models.selectedIndex = zimmCatalog.findIndex(item => item.fit === 'premium')
+const newSide = () => ({ ...transformDefaults, image: null, kind: '', name: '', thumb: '', revision: 0, history: [], future: [] })
 const sides = { front: newSide(), back: newSide() }
 
 let activeSide = 'front'
 let preview = false
-let chosenColor = '#dedbd2'
+let exampleImage
+let hasImportedArtwork = false
+let chosenColor = zimmCatalog[models.value].colors.find(([name]) => name === 'Preto')[1]
 let pendingAppearance = null
 let stage = null
 
@@ -120,6 +126,7 @@ function syncStatus() {
   const art = sides[activeSide]
   $('transform-status').textContent = art.image ? Math.round(art.scale) + '% · ' + Math.round(art.rotation) + '°' : ''
   $('undo').disabled = !art.history.length
+  $('redo').disabled = !art.future.length
   $('hint').textContent = preview || !art.image
     ? 'Arraste para girar a camiseta. Clique na estampa para editar.'
     : 'Arraste a estampa para mover. Use os cantos para redimensionar e a alça redonda para girar.'
@@ -143,14 +150,21 @@ function syncInspector() {
   $('opacity').value = art.opacity
   $('opacity-value').value = art.opacity + '%'
   $('preview').setAttribute('aria-pressed', String(preview))
-  $('preview').textContent = preview ? 'Editar' : 'Prévia'
+  const previewLabel = preview ? 'Editar' : 'Prévia'
+  $('preview').setAttribute('aria-label', previewLabel)
+  $('preview-label').textContent = previewLabel
   $('preview').disabled = !art.image
   syncStatus()
 }
 
 function showFileError(message) {
-  $('file-error').textContent = message
-  $('file-error').hidden = !message
+  const notice = $('file-error')
+  notice.textContent = message
+  notice.hidden = !message
+  if (message && compactEditor.matches) {
+    setInspectorOpen(true)
+    notice.scrollIntoView({ block: 'nearest' })
+  }
 }
 
 function snapshot(side) {
@@ -174,6 +188,7 @@ function recordChange(side, previous) {
   if (Object.keys(previous).every(key => previous[key] === art[key])) return
   if (art.history.length >= 30) art.history.shift()
   art.history.push(previous)
+  art.future.length = 0
   if (side === activeSide) syncStatus()
 }
 
@@ -201,15 +216,17 @@ function discreteEdit(properties) {
   syncInspector()
 }
 
-function undo() {
+function stepHistory(from, to) {
   finishAppearance()
   stage?.finishGesture()
-  const before = sides[activeSide].history.pop()
-  if (!before) return
-  applyArt(activeSide, before)
+  const art = sides[activeSide]
+  const change = art[from].pop()
+  if (!change) return
+  const current = artworkSnapshot(activeSide)
+  art[to].push(Object.fromEntries(Object.keys(change).map(key => [key, current[key]])))
+  applyArt(activeSide, change)
   syncInspector()
 }
-
 function selectArtwork(side) {
   const nextPreview = side === null
   if (preview === nextPreview && (nextPreview || side === activeSide)) return
@@ -234,21 +251,37 @@ function switchView(view) {
   stage?.setView(view)
 }
 
-async function importArtwork(file, side) {
+async function importArtwork(file, side, starter = false) {
   if (!file) return
   const state = sides[side]
   const revision = ++state.revision
   if (side === activeSide) showFileError('')
   try {
     const artwork = await readArtwork(file)
-    if (state.revision !== revision) return
+    if (state.revision !== revision || (starter && hasImportedArtwork)) return
+    if (starter) {
+      const ctx = artwork.image.getContext('2d')
+      ctx.save()
+      ctx.globalCompositeOperation = 'source-in'
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, artwork.image.width, artwork.image.height)
+      ctx.restore()
+      artwork.thumb = thumbnail(artwork.image)
+      exampleImage = artwork.image
+    }
     finishAppearance()
     stage?.finishGesture()
     const before = artworkSnapshot(side)
+    if (!starter && side !== 'front' && exampleImage && sides.front.image === exampleImage) {
+      applyArt('front', { ...transformDefaults, image: null, kind: '', name: '', thumb: '' })
+    }
     applyArt(side, { ...transformDefaults, ...artwork })
-    recordChange(side, before)
+    if (!starter) {
+      hasImportedArtwork = true
+      recordChange(side, before)
+    }
     if (side === activeSide) {
-      preview = false
+      preview = starter
       stage?.setView(side)
       syncInspector()
     }
@@ -287,6 +320,7 @@ function initializeStage() {
   let fit = 'regular'
   let nextFrame = 0
   let viewAnimation = null
+  const zoomButton = $('preview-zoom')
   const dirtyPrints = new Set()
   const manipulation = createArtTransform({
     container, camera, printCenter: printArea.center,
@@ -326,6 +360,7 @@ function initializeStage() {
     const height = Math.max(1, container.clientHeight)
     camera.aspect = width / height
     camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(17)) / Math.min(1, camera.aspect)))
+    camera.zoom = compactEditor.matches && zoomButton.getAttribute('aria-pressed') === 'true' ? 1.4 : 1
     camera.updateProjectionMatrix()
     renderer.setSize(width, height, false)
     manipulation.resize(width, height)
@@ -367,7 +402,10 @@ function initializeStage() {
       canvas.getContext('2d').drawImage(image, 0, 0)
       prints[side] = canvas
     }
-    return { model: zimmCatalog[models.value], color: chosenColor, camera: camera.clone(), target: target.clone(), prints }
+    const exportCamera = camera.clone()
+    exportCamera.zoom = 1
+    exportCamera.updateProjectionMatrix()
+    return { model: zimmCatalog[models.value], color: chosenColor, camera: exportCamera, target: target.clone(), prints }
   }
 
   function paintPrint(side) {
@@ -423,6 +461,11 @@ function initializeStage() {
   setModel(zimmCatalog[models.value])
   updatePrint('front')
   updatePrint('back')
+  zoomButton.addEventListener('click', () => {
+    manipulation.finishGesture()
+    zoomButton.setAttribute('aria-pressed', String(zoomButton.getAttribute('aria-pressed') !== 'true'))
+    resize()
+  })
   new ResizeObserver(resize).observe(container)
   resize()
 
@@ -499,20 +542,24 @@ $('art-file').addEventListener('change', event => {
   event.target.value = ''
 })
 
-const dropzone = $('dropzone')
-dropzone.addEventListener('dragover', event => {
-  event.preventDefault()
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
-  dropzone.classList.add('drag-over')
-})
-dropzone.addEventListener('dragleave', event => {
-  if (!dropzone.contains(event.relatedTarget)) dropzone.classList.remove('drag-over')
-})
-dropzone.addEventListener('drop', event => {
-  event.preventDefault()
-  dropzone.classList.remove('drag-over')
-  importArtwork(event.dataTransfer?.files[0], activeSide)
-})
+for (const target of [$('dropzone'), $('scene')]) {
+  target.addEventListener('dragover', event => {
+    if (!event.dataTransfer?.types.includes('Files')) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+    target.classList.add('drag-over')
+  })
+  target.addEventListener('dragleave', event => {
+    if (!target.contains(event.relatedTarget)) target.classList.remove('drag-over')
+  })
+  target.addEventListener('drop', event => {
+    target.classList.remove('drag-over')
+    const file = event.dataTransfer?.files[0]
+    if (!file) return
+    event.preventDefault()
+    importArtwork(file, activeSide)
+  })
+}
 
 for (const type of ['input', 'change']) {
   $('art-color').addEventListener(type, event => editAppearance({ ink: event.target.value }, type === 'change'))
@@ -523,18 +570,14 @@ $('opacity').addEventListener('blur', finishAppearance)
 $('original-color').addEventListener('click', () => discreteEdit({ ink: '' }))
 $('flip').addEventListener('click', () => discreteEdit({ flip: !sides[activeSide].flip }))
 $('reset-print').addEventListener('click', () => discreteEdit(transformDefaults))
-$('undo').addEventListener('click', undo)
+$('undo').addEventListener('click', () => stepHistory('history', 'future'))
+$('redo').addEventListener('click', () => stepHistory('future', 'history'))
 $('preview').addEventListener('click', () => {
   stage?.finishGesture()
   selectArtwork(preview ? activeSide : null)
 })
-document.addEventListener('keydown', event => {
-  if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== 'z' ||
-      event.target.matches('input, textarea, [contenteditable]')) return
-  event.preventDefault()
-  undo()
-})
-$('remove-art').addEventListener('click', () => {
+function removeActiveArtwork() {
+  if (!sides[activeSide].image) return
   finishAppearance()
   stage?.finishGesture()
   const state = sides[activeSide]
@@ -544,16 +587,38 @@ $('remove-art').addEventListener('click', () => {
   recordChange(activeSide, before)
   showFileError('')
   syncInspector()
-  $('art-file').focus()
-})
+  if (compactEditor.matches && !workspace.classList.contains('inspector-open')) {
+    requestAnimationFrame(() => workspace.querySelector('.quick-import').focus({ preventScroll: true }))
+  } else $('art-file').focus()
+}
+$('remove-art').addEventListener('click', removeActiveArtwork)
+$('remove-art-card').addEventListener('click', removeActiveArtwork)
 
 try {
   stage = initializeStage()
   for (const button of exportButtons) button.disabled = false
 } catch (error) {
   console.error('Falha ao iniciar visualização 3D', error)
+  $('preview-zoom').disabled = true
   $('graphics-error').textContent = 'Não consegui iniciar a visualização 3D. Tente recarregar a página em um navegador atualizado.'
   $('graphics-error').hidden = false
 }
 syncFabric(zimmCatalog[models.value], true)
 syncInspector()
+
+describeHandleKeys(document.querySelectorAll('#transform .handle'))
+bindShortcuts([
+  ['#undo', 'Mod+Z'], ['#redo', 'Mod+Shift+Z', 'Mod+Y'],
+  ['#remove-art', 'Delete', 'Backspace'], ['#preview', 'P'],
+  ['#flip', 'F'], ['#reset-print', 'Shift+R'], ['#send-to-mockups', 'M'],
+  ['#art-file', 'Mod+I'],
+  ['[data-view=front]', '1'], ['[data-view=back]', '2'], ['[data-view=quarter]', '3'],
+  ['#original-color', 'Shift+O'], ['#art-color', 'Shift+K'],
+  ['#model', 'Shift+M'], ['#color', 'K'], ['#opacity', 'O'],
+  ['[data-export=png]', 'Mod+Shift+E'], ['[data-export=gif]', 'Mod+Alt+E'],
+  ['[data-export=zip]', 'Mod+Alt+Shift+E']
+])
+
+starterArtworkFile().then(file => {
+  if (!sides.front.revision) return importArtwork(file, 'front', true)
+}).catch(error => console.error(error.message))

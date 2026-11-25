@@ -1,5 +1,8 @@
+import { compactEditor } from './editor-layout.js'
+
 export function createArtToolbar(element, viewport) {
   const grip = element.querySelector('.tool-grip')
+  const dock = document.getElementById('art-tools-dock')
   let anchor
   let offset = { x: 0, y: 0 }
   let position
@@ -8,7 +11,7 @@ export function createArtToolbar(element, viewport) {
   function layout(target) {
     anchor = target
     element.hidden = !anchor
-    if (!anchor) return
+    if (!anchor || compactEditor.matches) return
     const margin = 8
     const width = element.offsetWidth
     const height = element.offsetHeight
@@ -16,7 +19,7 @@ export function createArtToolbar(element, viewport) {
       x: anchor.x + 14,
       y: anchor.y - height - 12
     }
-    if (proposed.y < margin) proposed.y = anchor.y + 12
+    if (proposed.y < margin) proposed.y = anchor.bottom + 12
     position = {
       x: Math.max(margin, Math.min(viewport.clientWidth - width - margin, proposed.x + offset.x)),
       y: Math.max(margin, Math.min(viewport.clientHeight - height - margin, proposed.y + offset.y))
@@ -26,6 +29,18 @@ export function createArtToolbar(element, viewport) {
     return proposed
   }
 
+  function updateDock() {
+    const parent = compactEditor.matches ? dock : viewport
+    if (element.parentElement === parent) return
+    const focused = element.contains(document.activeElement) ? document.activeElement : null
+    drag = undefined
+    parent.append(element)
+    layout(anchor)
+    if (focused && !(compactEditor.matches && focused === grip)) focused.focus({ preventScroll: true })
+  }
+
+  updateDock()
+  compactEditor.addEventListener('change', updateDock)
   element.addEventListener('pointerdown', event => event.stopPropagation())
 
   grip.addEventListener('pointerdown', event => {

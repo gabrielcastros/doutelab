@@ -140,3 +140,9 @@ export function displayArtwork(art) {
   art.tinted = { color: art.ink, canvas }
   return canvas
 }
+
+export async function starterArtworkFile() {
+  const response = await fetch(new URL('./assets/design-here.png', import.meta.url))
+  if (!response.ok) throw new Error('Não consegui abrir a estampa inicial.')
+  return new File([await response.blob()], 'design-here.png', { type: 'image/png' })
+}

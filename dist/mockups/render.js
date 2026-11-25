@@ -1,7 +1,8 @@
+import { displayArtwork } from '../artwork.js'
 import { canvasOf } from './files.js'
-import { clamp } from './state.js'
+import { clamp, printAreaOf } from './state.js'
 
-const background = '#e7e4df'
+const tintedArtwork = new WeakMap()
 const linear = Float32Array.from({ length: 256 }, (_, i) =>
   i < 11 ? i / 3294.6 : ((i / 255 + .055) / 1.055) ** 2.4)
 const srgb = Uint8Array.from({ length: 8193 }, (_, i) => {
@@ -82,14 +83,20 @@ export function layerSize(layer, width, height) {
   return [w, w * layer.height / layer.width]
 }
 
-export function hitsLayer(layer, x, y, width, height) {
+export function layerPoint(layer, x, y, width, height) {
   const [w, h] = layerSize(layer, width, height)
   const radians = layer.rotation * Math.PI / 180
   const dx = (x - layer.x) * width
   const dy = (y - layer.y) * height
   const u = (dx * Math.cos(radians) + dy * Math.sin(radians)) / w + .5
   const v = (dy * Math.cos(radians) - dx * Math.sin(radians)) / h + .5
-  return u >= 0 && u < 1 && v >= 0 && v < 1
+  return { x: u, y: v }
+}
+
+export function hitsLayer(layer, x, y, width, height) {
+  const point = layerPoint(layer, x, y, width, height)
+  const rect = layer.crop ?? { x: .5, y: .5, w: 1, h: 1 }
+  return Math.abs(point.x - rect.x) <= rect.w / 2 && Math.abs(point.y - rect.y) <= rect.h / 2
 }
 
 function buildInk(layer, image, width, height) {
@@ -105,18 +112,24 @@ function buildInk(layer, image, width, height) {
   const context = canvas.getContext('2d', { willReadFrequently: true })
   context.translate(cx - left, cy - top)
   context.rotate(radians)
+  if (layer.crop) {
+    const { x, y, w: fractionX, h: fractionY } = layer.crop
+    context.beginPath()
+    context.rect((x - .5 - fractionX / 2) * w, (y - .5 - fractionY / 2) * h, fractionX * w, fractionY * h)
+    context.clip()
+  }
   context.drawImage(image, -w / 2, -h / 2, w, h)
   return { left, top, right, bottom, stride: canvas.width, pixels: context.getImageData(0, 0, canvas.width, canvas.height).data }
 }
 
-function applyInk(data, map, zone, layer, image) {
-  const { width, height, alpha, folds, detail, reference } = map
+function applyInk(data, map, alpha, area, layer, image) {
+  const { width, height, folds, detail, reference } = map
   const { left, top, right, bottom, stride, pixels } = buildInk(layer, image, width, height)
   const profile = inkProfiles[layer.finish]
-  const startX = Math.max(left, Math.floor((zone.x - zone.w / 2) * width))
-  const startY = Math.max(top, Math.floor((zone.y - zone.h / 2) * height))
-  const endX = Math.min(right, Math.ceil((zone.x + zone.w / 2) * width))
-  const endY = Math.min(bottom, Math.ceil((zone.y + zone.h / 2) * height))
+  const startX = area ? Math.max(left, Math.floor((area.x - area.w / 2) * width)) : left
+  const startY = area ? Math.max(top, Math.floor((area.y - area.h / 2) * height)) : top
+  const endX = area ? Math.min(right, Math.ceil((area.x + area.w / 2) * width)) : right
+  const endY = area ? Math.min(bottom, Math.ceil((area.y + area.h / 2) * height)) : bottom
   const step = Math.max(1, Math.round(width / 300))
   for (let y = startY; y < endY; y++) {
     for (let x = startX; x < endX; x++) {
@@ -207,29 +220,91 @@ export function photoFrame(project, sourceWidth, sourceHeight, width, height) {
   }
 }
 
-export function paintScene(canvas, project, map, artwork) {
+function printableMask(map, project, neckline) {
+  const { width, height, alpha } = map
+  const rect = project.neckline
+  if (!project.protectNeckline || (!rect && !neckline?.length)) return alpha
+
+  const context = canvasOf(width, height).getContext('2d', { willReadFrequently: true })
+  if (rect) {
+    context.fillRect((rect.x - rect.w / 2) * width, (rect.y - rect.h / 2) * height, rect.w * width, rect.h * height)
+  } else {
+    context.beginPath()
+    const [[x, y], ...points] = neckline
+    context.moveTo(x * width, y * height)
+    for (const [u, v] of points) context.lineTo(u * width, v * height)
+    context.closePath()
+    context.fill()
+  }
+  const excluded = context.getImageData(0, 0, width, height).data
+  return Uint8Array.from(alpha, (value, i) => Math.round(value * (1 - excluded[i * 4 + 3] / 255)))
+}
+
+export function paintScene(canvas, project, map, artwork, neckline, composition = canvas) {
   const { width, height, textile, alpha } = map
   const medium = canvasOf(width, height)
   const context = medium.getContext('2d')
   const pixels = context.createImageData(width, height)
   const { data } = pixels
-  const backdrop = [231, 228, 223].map(v => linear[v])
+  data.set(textile)
   for (let i = 0; i < alpha.length; i++) {
     const j = i * 4
-    const cover = textile[j + 3] / 255
-    for (let k = 0; k < 3; k++) {
-      const old = linear[textile[j + k]]
-      data[j + k] = cover === 1 ? textile[j + k] : toRGB(old * cover + backdrop[k] * (1 - cover))
-    }
-    data[j + 3] = 255
+    if (alpha[i] === 255 || data[j + 3] !== 255) continue
+    const low = Math.min(data[j], data[j + 1], data[j + 2])
+    const high = Math.max(data[j], data[j + 1], data[j + 2])
+    const paleNeutral = clamp((low - 194) / 31, 0, 1) * clamp((24 - high + low) / 16, 0, 1)
+    data[j + 3] *= 1 - paleNeutral * (1 - alpha[i] / 255)
   }
 
-  for (const layer of project.layers) {
-    const image = artwork.get(layer.source)
-    if (image) applyInk(data, map, project.zone, layer, image)
+  if (project.layers.length) {
+    const area = printAreaOf(project)
+    const mask = printableMask(map, project, neckline)
+    for (const layer of project.layers) {
+      const image = artwork.get(layer.source)
+      if (!image) continue
+      if (layer.kind !== 'SVG' || !layer.ink) {
+        applyInk(data, map, mask, area, layer, image)
+        continue
+      }
+      let art = tintedArtwork.get(image)
+      if (!art) {
+        art = { image, kind: 'SVG' }
+        tintedArtwork.set(image, art)
+      }
+      art.ink = layer.ink
+      applyInk(data, map, mask, area, layer, displayArtwork(art))
+    }
   }
+
+  context.putImageData(pixels, 0, 0)
+  const output = canvas.getContext('2d')
+  if (map.concrete) {
+    const image = map.concrete
+    const scale = Math.max(canvas.width / image.width, canvas.height / image.height)
+    const width = image.width * scale, height = image.height * scale
+    output.drawImage(image, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height)
+  } else {
+    output.fillStyle = '#e9e7e2'
+    output.fillRect(0, 0, canvas.width, canvas.height)
+  }
+
+  const left = (canvas.width - composition.width) / 2
+  const top = (canvas.height - composition.height) / 2
+  const frame = photoFrame(project, width, height, composition.width, composition.height)
+  frame.x += left
+  frame.y += top
+  output.save()
+  output.beginPath()
+  output.rect(left, top, composition.width, composition.height)
+  output.clip()
+  output.imageSmoothingQuality = 'high'
+  output.drawImage(medium, frame.x, frame.y, frame.w, frame.h)
+  output.restore()
 
   if (project.light !== 'original' || project.shadow !== 'none') {
+    const { width, height } = canvas
+    const lit = output.getImageData(0, 0, width, height)
+    const { data } = lit
     const gains = {
       original: [1, 1, 1], studio: [1.09, 1.09, 1.1], golden: [1.2, 1.02, .73],
       cool: [.84, 1.03, 1.18], dramatic: [1.02, .99, .97]
@@ -237,7 +312,8 @@ export function paintScene(canvas, project, map, artwork) {
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const j = (y * width + x) * 4
-        const u = x / width, v = y / height
+        const u = clamp((x - left) / composition.width, 0, 1)
+        const v = clamp((y - top) / composition.height, 0, 1)
         let exposure = 1
         if (project.light === 'studio') exposure = 1.06 - Math.hypot(u - .46, v - .38) * .15
         if (project.light === 'dramatic') exposure = 1.26 - clamp(u * .64 + v * .25, 0, .83)
@@ -249,14 +325,8 @@ export function paintScene(canvas, project, map, artwork) {
         for (let k = 0; k < 3; k++) data[j + k] = toRGB(linear[data[j + k]] * exposure * gains[k])
       }
     }
+    output.putImageData(lit, 0, 0)
   }
 
-  context.putImageData(pixels, 0, 0)
-  const output = canvas.getContext('2d')
-  output.fillStyle = background
-  output.fillRect(0, 0, canvas.width, canvas.height)
-  const frame = photoFrame(project, width, height, canvas.width, canvas.height)
-  output.imageSmoothingQuality = 'high'
-  output.drawImage(medium, frame.x, frame.y, frame.w, frame.h)
   return frame
 }

@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { createArtToolbar } from './art-toolbar.js'
+import { compactEditor } from './editor-layout.js'
 
 const worldX = 1.36
 const worldY = 1.20
@@ -101,10 +102,12 @@ export function createArtTransform({ container, camera, printCenter, getProjecti
     const top = projected(vectorAt(0, 1, form).add(form.center), side)
     const center = projected(form.center, side)
     const outward = top.clone().sub(center).normalize()
-    const rotation = top.clone().addScaledVector(outward, 30)
+    const rotation = top.clone().addScaledVector(outward, compactEditor.matches ? 36 : 30)
+    const handleYs = [rotation.y, ...points.map(pixel => pixel.y)]
     placeToolbar({
       x: Math.max(...points.map(pixel => pixel.x)),
-      y: Math.min(rotation.y, ...points.map(pixel => pixel.y))
+      y: Math.min(...handleYs),
+      bottom: Math.max(...handleYs)
     })
     setHandle(rotateHandle, rotation)
     setHandle(moveHandle, center)
@@ -121,10 +124,10 @@ export function createArtTransform({ container, camera, printCenter, getProjecti
     ctx.closePath()
     ctx.moveTo(top.x, top.y)
     ctx.lineTo(rotation.x, rotation.y)
-    ctx.strokeStyle = '#261c23cc'
+    ctx.strokeStyle = '#1C1A18'
     ctx.lineWidth = 3.2
     ctx.stroke()
-    ctx.strokeStyle = '#ff8f72'
+    ctx.strokeStyle = '#FEFCEB'
     ctx.lineWidth = 1.4
     ctx.stroke()
   }
@@ -145,14 +148,7 @@ export function createArtTransform({ container, camera, printCenter, getProjecti
   }
 
   function hitsArtwork(point, form, art) {
-    if (!inside(point, form) || art.opacity === 0) return false
-    const delta = point.clone().sub(form.center)
-    const local = rotate(delta.x, delta.y, -form.angle)
-    const u = .5 + (art.flip ? -local.x : local.x) / form.width
-    const v = .5 - local.y / form.height
-    const x = clamp(Math.floor(u * art.image.width), 0, art.image.width - 1)
-    const y = clamp(Math.floor(v * art.image.height), 0, art.image.height - 1)
-    return art.image.getContext('2d').getImageData(x, y, 1, 1).data[3] > 8
+    return art.opacity > 0 && inside(point, form)
   }
 
   function down(event) {
@@ -195,7 +191,7 @@ export function createArtTransform({ container, camera, printCenter, getProjecti
       const candidate = facing(side) ? side : side === 'front' ? 'back' : 'front'
       const artwork = getArtwork(candidate)
       const point = artwork.image && facing(candidate) ? toArtPoint(event, candidate) : null
-      container.classList.toggle('on-art', Boolean(point && inside(point, artworkLayout(artwork))))
+      container.classList.toggle('on-art', Boolean(point && hitsArtwork(point, artworkLayout(artwork), artwork)))
       return
     }
     if (drag.pointer !== event.pointerId || drag.side !== side) return

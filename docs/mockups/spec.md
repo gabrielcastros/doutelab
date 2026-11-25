@@ -1,6 +1,6 @@
 # Especificação do módulo Mockups
 
-Versão 0.2
+Versão 0.3
 
 ## Objetivo
 
@@ -20,16 +20,17 @@ Escolher peça e vista na biblioteca → importar ou receber a arte do 3D → aj
 
 ### ART-01 · Importação e posicionamento
 
-- Cada PNG importado vira uma camada independente e selecionada, com PNG direto inicial. A arte começa centralizada na zona ativa, ajustada à área e com proporção preservada.
-- Arrastar a arte move a camada, arrastar os cantos ajusta a escala e arrastar a alça redonda gira a arte. Shift ajusta a rotação em passos de 15°. Os acabamentos simulados deformam a arte com as dobras. A zona estampável e o sombreamento da cena valem para todos os acabamentos.
+- Cada PNG importado vira uma camada independente e selecionada, com PNG direto inicial. A arte começa centralizada na zona de posicionamento sugerida ou na área delimitada pelo usuário. A silhueta inteira da peça aceita estampa por padrão.
+- Arrastar a arte move a camada, arrastar os cantos ajusta a escala e arrastar a alça redonda gira a arte. Shift ajusta a rotação em passos de 15°. Os acabamentos simulados deformam a arte com as dobras. A máscara de tecido e o sombreamento da cena valem para todos os acabamentos. Em Cena, a proteção opcional exclui a gola e o interior da peça. Cenas próprias permitem marcar a região protegida. O usuário pode ainda delimitar uma área estampável na foto, comum a todas as camadas.
 - **Aceite.** Um PNG transparente pode ser movido, redimensionado e rotacionado. Transparência, dobras e recorte aparecem tanto na prévia quanto no arquivo exportado. Arquivo corrompido gera mensagem e preserva o projeto.
 
 ### CAM-01 · Edição por camada
 
-- Ao selecionar uma arte no canvas ou na lista de camadas, exibir acabamento, duplicar, trazer para frente, mandar para trás e excluir no menu flutuante perto da seleção. A alça desloca esse menu. Clicar fora da estampa limpa a seleção. No Estúdio 3D, clicar fora entra em prévia e clicar nos pixels visíveis da estampa volta à edição.
+- Ao selecionar uma arte no canvas ou na lista de camadas, exibir acabamento, duplicar, trazer para frente, mandar para trás e excluir no menu flutuante perto da seleção. A alça desloca esse menu. Recortar permite marcar a parte a manter de uma estampa. O recorte acompanha a posição, a escala e a rotação da camada e pode ser removido. Clicar fora da estampa limpa a seleção. No Estúdio 3D, clicar fora entra em prévia e clicar nos pixels visíveis da estampa volta à edição.
 - Duplicar copia arte, zona, transformação e acabamento. A cópia recebe identidade própria, entra logo acima da original com pequeno deslocamento e fica selecionada.
 - A ordem é comum à lista e ao canvas. Cada ação de ordenação move uma posição, com o controle desabilitado no limite. Excluir remove a camada selecionada e limpa a seleção. As operações podem ser desfeitas e refeitas.
-- **Aceite.** Com duas artes sobrepostas, a ordem visível muda ao reordenar. Editar a cópia preserva a original. Desfazer uma exclusão restaura a camada na posição, ordem e acabamento anteriores.
+- Em telas estreitas, as ações ficam abaixo da cena e os ajustes abrem sob demanda. Selecionar uma estampa não altera o tamanho da cena. Ampliar muda só a visualização de edição.
+- **Aceite.** Com duas artes sobrepostas, a ordem visível muda ao reordenar. Editar a cópia preserva a original. Desfazer uma exclusão restaura a camada na posição, ordem e acabamento anteriores. A proteção, a área da foto e o recorte por camada aparecem na prévia, no projeto salvo e na exportação. Projetos anteriores preservam o limite salvo até que o usuário escolha usar a peça inteira.
 
 ### ACA-01 · Acabamentos de impressão
 

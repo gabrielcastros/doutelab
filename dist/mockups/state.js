@@ -30,10 +30,19 @@ export function exportSize(format, width, height) {
 export function newProject(scene) {
   return {
     version: 1, scene: { id: scene.id, version: scene.version }, layers: [], selected: null,
-    zone: { ...scene.zone }, light: 'original', shadow: 'none',
-    intensity: .55, softness: .35, shadowX: 0, shadowY: 0,
+    zone: { ...scene.zone }, printArea: null, protectNeckline: true, neckline: null, light: 'original', shadow: 'diffuse',
+    intensity: .6, softness: 1, shadowX: 0, shadowY: 0,
     format: 'original', zoom: 1, cropX: 0, cropY: 0
   }
+}
+
+// Projects saved before full-garment printing used the placement zone as a clip.
+export const printAreaOf = project => project.printArea === undefined ? project.zone : project.printArea
+
+export function rectBetween(start, end) {
+  const x0 = clamp(start.x, 0, 1), y0 = clamp(start.y, 0, 1)
+  const x1 = clamp(end.x, 0, 1), y1 = clamp(end.y, 0, 1)
+  return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) }
 }
 
 export function createHistory() {
@@ -63,12 +72,12 @@ export function selectedLayer(project) {
   return project.layers.find(layer => layer.id === project.selected)
 }
 
-export function addLayer(project, source, name, width, height, sceneAspect) {
-  const { zone } = project
+export function addLayer(project, source, name, width, height, sceneAspect, kind = 'PNG') {
+  const zone = printAreaOf(project) ?? project.zone
   const aspect = width / height
   const w = Math.min(zone.w * .64, zone.h * aspect / sceneAspect * .64)
   const layer = {
-    id: crypto.randomUUID(), name, source, width, height, finish: 'direct',
+    id: crypto.randomUUID(), name, source, width, height, kind, finish: 'direct',
     x: zone.x, y: zone.y, w, rotation: 0, seed: Math.floor(Math.random() * 65536)
   }
   return { ...project, layers: [...project.layers, layer], selected: layer.id }
@@ -103,19 +112,23 @@ export function moveLayer(project, amount) {
   return { ...project, layers }
 }
 
-export function deleteLayer(project) {
-  return { ...project, selected: null, layers: project.layers.filter(layer => layer.id !== project.selected) }
+export function deleteLayer(project, id = project.selected) {
+  return { ...project, selected: project.selected === id ? null : project.selected, layers: project.layers.filter(layer => layer.id !== id) }
 }
 
 export const imageData = /^data:image\/(png|jpeg|webp|avif);base64,[A-Za-z0-9+/]+={0,2}$/
 const within = (value, min, max) => Number.isFinite(value) && value >= min && value <= max
+const validRect = rect => Boolean(rect && within(rect.x, 0, 1) && within(rect.y, 0, 1) &&
+  within(rect.w, .02, 1) && within(rect.h, .02, 1))
+const optionalRect = rect => rect == null || validRect(rect)
 
 export function validateProject(project) {
   if (!project || project.version !== 1) throw new Error('A versão deste projeto é incompatível.')
   const { scene, zone, layers } = project
   const invalid = () => new Error('O arquivo de projeto está incompleto ou inválido.')
-  if (!scene || typeof scene.id !== 'string' || scene.version !== 1 || !zone ||
-      !within(zone.x, 0, 1) || !within(zone.y, 0, 1) || !within(zone.w, .02, 1) || !within(zone.h, .02, 1) ||
+  if (!scene || typeof scene.id !== 'string' || scene.version !== 1 || !validRect(zone) ||
+      !optionalRect(project.printArea) || !optionalRect(project.neckline) ||
+      (project.protectNeckline !== undefined && typeof project.protectNeckline !== 'boolean') ||
       !Object.hasOwn(lights, project.light) || !Object.hasOwn(shadows, project.shadow) ||
       !Object.hasOwn(formats, project.format) || !within(project.intensity, 0, 1) || !within(project.softness, 0, 1) ||
       !within(project.shadowX, -.5, .5) || !within(project.shadowY, -.5, .5) ||
@@ -124,10 +137,12 @@ export function validateProject(project) {
   const ids = new Set()
   for (const layer of layers) {
     if (!layer || typeof layer.id !== 'string' || ids.has(layer.id) || typeof layer.name !== 'string' ||
-        !imageData.test(layer.source) || !Object.hasOwn(finishes, layer.finish) ||
+        !imageData.test(layer.source) || (layer.kind !== undefined && !['PNG', 'SVG'].includes(layer.kind)) ||
+        (layer.ink !== undefined && (layer.kind !== 'SVG' || typeof layer.ink !== 'string' || !/^#[0-9a-f]{6}$/i.test(layer.ink))) ||
+        !Object.hasOwn(finishes, layer.finish) ||
         !within(layer.width, 1, 12000) || !within(layer.height, 1, 12000) ||
         !within(layer.x, 0, 1) || !within(layer.y, 0, 1) || !within(layer.w, .01, 1.5) ||
-        !within(layer.rotation, -180, 180) || !within(layer.seed, 0, 65535)) throw invalid()
+        !within(layer.rotation, -180, 180) || !within(layer.seed, 0, 65535) || !optionalRect(layer.crop)) throw invalid()
     ids.add(layer.id)
   }
   if (project.selected !== null && !ids.has(project.selected)) throw invalid()
