@@ -6,7 +6,11 @@ const types = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
-  '.txt': 'text/plain; charset=utf-8'
+  '.txt': 'text/plain; charset=utf-8',
+  '.webp': 'image/webp',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.json': 'application/json; charset=utf-8'
 }
 const source = new URL('../dist/', import.meta.url)
 const output = process.argv[2]

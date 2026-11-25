@@ -72,3 +72,15 @@ O editor 3D já está em `dist/`. O PNG de mockup renderizado pelo 3D contém a 
 
 - Começar com reamostragem Lanczos para as fotos cujo lado menor tenha menos de 1000 px. Gerar uma cópia mantendo as proporções e preparar máscaras a partir da versão que será usada na cena.
 - Validar primeiro com as costas da camiseta normal e da oversized. Comparar a 100% as bordas e costuras e verificar se a recoloração para off-white mantém a textura visível antes de aplicar ao restante do catálogo.
+
+## Entrega atual
+
+A biblioteca inicial inclui uma camiseta estonada de frente, gerada para o doutelab. **Adicionar foto** cadastra uma cena local e permite selecionar a vista, informar uma máscara opcional e ampliar imagens menores. A foto da máquina entra no arquivo de projeto quando ele é salvo. As demais cenas públicas dependem de fotos lisas adequadas para cada vista.
+
+O editor aplica os cinco acabamentos, as variações de luz e as sombras como simulações em uma fotografia. O comando **Criar mockup** usa a arte rasterizada disponível no editor 3D antes das transformações de posição ou cor. COR-01, a recoloração do tecido, fica para uma entrega posterior.
+
+### Foto de referência
+
+Arquivo [camiseta-estonada.webp](../../dist/mockups/assets/camiseta-estonada.webp). Gerada com imagegen e convertida para WebP com transparência.
+
+> Product mockup asset for doutelab. A straight overhead flat-lay product photograph of one black / deep charcoal washed cotton oversized T-shirt, untucked and spread naturally on a transparent background. Show whole silhouette with generous margins, body centered, sleeves spread gently, neckline at top, front view. Distinct realistic fine cotton weave, subtle stone wash grain, small natural folds on the torso, real seam and hem stitching, even bright soft neutral studio light with detailed blacks, ideal for adding a print later. Plain front, no logo, no text, no tag, no decoration, no hanger or props, no cast shadow beyond garment. Square image.

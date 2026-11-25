@@ -4,6 +4,7 @@ import { OrbitControls } from './vendor/OrbitControls.js'
 import { makeClothMaterial, makeGarment, printArea } from './garment.js'
 import { createStudioRenderer, createStudioScene, makePrintTexture } from './studio.js'
 import { readArtwork, thumbnail, displayArtwork } from './artwork.js'
+import { saveTransfer } from './mockup-transfer.js'
 import { artworkLayout, createArtTransform, transformDefaults } from './transform.js'
 
 const $ = id => document.getElementById(id)
@@ -421,6 +422,26 @@ function initializeStage() {
 }
 
 const exportButtons = [...document.querySelectorAll('[data-export]')]
+$('send-to-mockups').addEventListener('click', async event => {
+  const side = activeSide
+  const art = sides[side]
+  if (!art.image) return
+  const button = event.currentTarget
+  button.disabled = true
+  try {
+    const blob = await new Promise((resolve, reject) => art.image.toBlob(result => {
+      if (result) resolve(result)
+      else reject(new Error('Não consegui preparar a estampa.'))
+    }, 'image/png'))
+    await saveTransfer({ blob, name: art.name.replace(/\.(png|svg)$/i, '') + '.png', side })
+    location.assign('./mockups.html?arte=1')
+  } catch (error) {
+    showFileError(error.message)
+  } finally {
+    button.disabled = false
+  }
+})
+
 const exportDownload = $('export-download')
 for (const button of exportButtons) button.addEventListener('click', async () => {
   const status = $('export-status')
